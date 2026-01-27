@@ -2,7 +2,7 @@
 
 > **Set a goal, let AI guide you.**
 
-[🇨🇳 繁體中文 (Traditional Chinese)](./README.md) | [🇺🇸 English (英文)](./README_EN.md)
+[🇹🇼 繁體中文 (Traditional Chinese)](./README.md) | [🇺🇸 English (英文)](./README_EN.md)
 
 Brainstorm AI is an interactive, AI-powered mind mapping tool designed to help you generate ideas, analyze strategies, and visualize connections. Whether you're planning a marketing campaign, writing a story, or just organizing your thoughts, Brainstorm AI leverages advanced Large Language Models (LLMs) to expand your thinking.
 
@@ -50,13 +50,16 @@ Brainstorm AI is an interactive, AI-powered mind mapping tool designed to help y
     npm install
     ```
 
-3.  **Start the development server**
+3.  **Start the Electron development environment**
     ```bash
-    npm run dev
+    npm run electron:dev
     ```
 
-4.  **Open in Browser**
-    Visit `http://localhost:5173` (or the URL shown in your terminal).
+4.  **Build the Application**
+    ```bash
+    npm run electron:build
+    ```
+    The built files will be located in the `release` directory.
 
 ## ⚙️ Configuration
 
