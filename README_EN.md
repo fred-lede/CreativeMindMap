@@ -1,10 +1,10 @@
-# Brainstorm AI
+# Creative MindMap by Brainstorm AI
 
 > **Set a goal, let AI guide you.**
 
 [🇹🇼 繁體中文 (Traditional Chinese)](./README.md) | [🇺🇸 English (英文)](./README_EN.md)
 
-Brainstorm AI is an interactive, AI-powered mind mapping tool designed to help you generate ideas, analyze strategies, and visualize connections. Whether you're planning a marketing campaign, writing a story, or just organizing your thoughts, Brainstorm AI leverages advanced Large Language Models (LLMs) to expand your thinking.
+Creative MindMap by Brainstorm AI is an interactive, AI-powered mind mapping tool designed to help you generate ideas, analyze strategies, and visualize connections. Whether you're planning a marketing campaign, writing a story, or just organizing your thoughts, Creative MindMap by Brainstorm AI leverages advanced Large Language Models (LLMs) to expand your thinking.
 
 ![Screenshot Placeholder](https://via.placeholder.com/800x450?text=Brainstorm+AI+Interface)
 

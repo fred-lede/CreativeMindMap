@@ -1,11 +1,11 @@
-# Brainstorm AI (創意發散)
+# Creative MindMap by Brainstorm AI (創意發散)
 
 > **設定目標，讓 AI 成為您的策略顧問。**  
 > Set a goal, let AI guide you.
 
 [�� 繁體中文 (Traditional Chinese)](./README.md) | [🇺🇸 English (英文)](./README_EN.md)
 
-Brainstorm AI 是一個互動式的 AI 心智圖工具，旨在幫助您發想創意、分析策略並視覺化各種關聯。無論您是在規劃行銷活動、撰寫故事，還是整理思緒，Brainstorm AI 都能利用先進的大型語言模型 (LLMs) 來擴展您的思考邊界。
+Creative MindMap by Brainstorm AI 是一個互動式的 AI 心智圖工具，旨在幫助您發想創意、分析策略並視覺化各種關聯。無論您是在規劃行銷活動、撰寫故事，還是整理思緒，Creative MindMap by Brainstorm AI 都能利用先進的大型語言模型 (LLMs) 來擴展您的思考邊界。
 
 ![Screenshot Placeholder](https://via.placeholder.com/800x450?text=Brainstorm+AI+Interface)
 
