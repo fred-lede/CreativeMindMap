@@ -7,7 +7,7 @@
 
 Creative MindMap by Brainstorm AI 是一個互動式的 AI 心智圖工具，旨在幫助您發想創意、分析策略並視覺化各種關聯。無論您是在規劃行銷活動、撰寫故事，還是整理思緒，Creative MindMap by Brainstorm AI 都能利用先進的大型語言模型 (LLMs) 來擴展您的思考邊界。
 
-![Screenshot Placeholder](https://via.placeholder.com/800x450?text=Brainstorm+AI+Interface)
+![Screenshot Placeholder](https://github.com/fred-lede/CreativeMindMap/blob/main/CreativeMindMap-1.jpg)
 
 ## ✨ 核心功能 (Key Features)
 
