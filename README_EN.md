@@ -6,7 +6,33 @@
 
 Creative MindMap by Brainstorm AI is an interactive, AI-powered mind mapping tool designed to help you generate ideas, analyze strategies, and visualize connections. It leverages advanced Large Language Models (LLMs) to expand your thinking.
 
-![Screenshot Placeholder](https://github.com/fred-lede/CreativeMindMap/blob/main/CreativeMindMap-1.jpg)
+
+<p align="center">
+  <b>CreativeMindMap UI Preview</b>
+</p>
+
+<table align="center">
+  <tr>
+    <td align="center">
+      <img src="CreativeMindMap-1.jpg" width="380"><br>
+      <sub>Main UI</sub>
+    </td>
+    <td align="center">
+      <img src="CreativeMindMap-2.jpg" width="380"><br>
+      <sub>Settings</sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <img src="CreativeMindMap-3.jpg" width="380"><br>
+      <sub>AI Deep Analysis & Path Summary</sub>
+    </td>
+    <td align="center">
+      <img src="CreativeMindMap-4.jpg" width="380"><br>
+      <sub>Connect</sub>
+    </td>
+  </tr>
+</table>
 
 ## ✨ Key Features
 
