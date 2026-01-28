@@ -86,6 +86,19 @@ Creative MindMap by Brainstorm AI is an interactive, AI-powered mind mapping too
     npm run electron:build
     ```
 
+### 🔽 Download prebuilt executables (easier)
+
+As an easier alternative to building from source, you can download prebuilt executables for the following platforms:
+
+- macOS
+- Windows
+- Ubuntu (Linux)
+
+Visit the Releases page to download the appropriate package for your platform:
+
+https://github.com/fred-lede/CreativeMindMap/releases
+
+
 ## ⚙️ Configuration
 
 ### API Connection Testing
