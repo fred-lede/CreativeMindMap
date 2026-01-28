@@ -1,41 +1,41 @@
-# Creative MindMap by Brainstorm AI
+# Creative MindMap by Brainstorm AI v0.2.0
 
 > **Set a goal, let AI guide you.**
 
 [🇹🇼 繁體中文 (Traditional Chinese)](./README.md) | [🇺🇸 English (英文)](./README_EN.md)
 
-Creative MindMap by Brainstorm AI is an interactive, AI-powered mind mapping tool designed to help you generate ideas, analyze strategies, and visualize connections. Whether you're planning a marketing campaign, writing a story, or just organizing your thoughts, Creative MindMap by Brainstorm AI leverages advanced Large Language Models (LLMs) to expand your thinking.
+Creative MindMap by Brainstorm AI is an interactive, AI-powered mind mapping tool designed to help you generate ideas, analyze strategies, and visualize connections. It leverages advanced Large Language Models (LLMs) to expand your thinking.
 
 ![Screenshot Placeholder](https://via.placeholder.com/800x450?text=Brainstorm+AI+Interface)
 
 ## ✨ Key Features
 
--   **🤖 AI-Driven Brainstorming**: Enter a core topic and let the AI automatically generate strategic sub-concepts and actionable ideas.
--   **🧠 Deep Analysis**: Select any node to get a structural analysis including definition, relevance, and key factors.
--   **🔗 Connection Discovery**: Select two nodes to have the AI discover and explain hidden relationships between them.
--   **📝 Path Summary**: Automatically summarize the logical path from the root topic to any specific node.
--   **🌍 Dual Language Support**: Seamlessly switches between Traditional Chinese and English, with automatic translation of concepts.
--   **🎨 Customizable UI**:
-    -   Multiple Themes: Default (Minimal), Cyberpunk (Dark Mode), Retro (Paper).
-    -   Adjustable Node Shapes: Circle, Rounded, Pill.
-    -   Auto-Layout & Force-Directed Graph.
--   **🔍 Google Search Grounding**: (Gemini Only) Enhance AI responses with real-time data from Google Search.
+-   **🤖 AI-Driven Brainstorming**: Generate strategic sub-concepts and actionable ideas automatically.
+-   **🧠 Deep Analysis & Path Summary**:
+    -   Get structural reports for any node.
+    -   Summarize logical thinking paths.
+    -   **[NEW]** Supports **Markdown formatting** and **Clickable Web Links** directly within the analysis modal.
+-   **🔗 Connection Discovery**: Discover and explain hidden relationships between two nodes.
+-   **🔐 Privacy & Security**: All API keys and project data are stored locally in your `localStorage`. No data is sent to 3rd party servers.
+-   **🌍 Dual Language Support**: Seamlessly switch between Traditional Chinese and English.
+-   **🎨 Customizable UI**: Cyberpunk and Retro themes with various node shapes.
 
 ## 🚀 Supported AI Providers
 
-1.  **Google Gemini** (Recommended)
-    -   Models: `gemini-2.5-flash`, `gemini-2.0-flash`, `gemini-1.5-pro`
-    -   Features: Fast response, **Web Search** integration.
+1.  **Google Gemini**
+    -   Models: `models/gemini-2.0-flash`, `models/gemini-1.5-pro`, etc.
+    -   Features: High-speed, integrated with **Google Search Grounding**.
 2.  **OpenAI**
-    -   Models: `gpt-4o`, `gpt-4-turbo`
+    -   Models: `gpt-4o`, `gpt-4o-mini-search-preview`, etc.
+    -   **[NEW]** **Responses API** Support: Configurable **Search Depth** (Low/Medium/High) using OpenAI's built-in web search.
 3.  **Local LLM (Ollama)**
-    -   Privacy-focused, runs locally on your machine.
-    -   Supports models like `llama3`, `mistral`, etc.
+    -   **[NEW] Search-Augmented Generation (SAG)**: Integrate `Serper.dev` or `Tavily` APIs for real-time web search even with local models.
+    -   Supports: `llama3.1`, `mistral`, `gemma2`, etc.
 
-## 🛠️ Installation & Setup
+## 🛠️ Installation & Setup (v0.2.0 Electron)
 
 ### Prerequisites
--   Node.js (v16 or higher)
+-   Node.js (v18 or higher)
 -   npm or yarn
 
 ### Steps
@@ -50,7 +50,7 @@ Creative MindMap by Brainstorm AI is an interactive, AI-powered mind mapping too
     npm install
     ```
 
-3.  **Start the Electron development environment**
+3.  **Run in Development mode**
     ```bash
     npm run electron:dev
     ```
@@ -59,44 +59,26 @@ Creative MindMap by Brainstorm AI is an interactive, AI-powered mind mapping too
     ```bash
     npm run electron:build
     ```
-    The built files will be located in the `release` directory.
 
 ## ⚙️ Configuration
 
-### Setting up API Keys
-1.  Click the **Settings** icon in the sidebar.
-2.  Select your **Provider** (Gemini or OpenAI).
-3.  Enter your API Key in the field provided.
-    -   *Keys are stored locally in your browser's `localStorage`.*
+### API Connection Testing
+The settings panel now features a **[Test Connection]** button for every provider. Verify your API keys instantly.
+
+### Web Search Settings
+-   **Gemini**: Enable "Web Search" directly.
+-   **OpenAI**: Choose Low/Medium/High search depth when enabled.
+-   **Local**: Select Serper or Tavily as your search provider (requires corresponding API key).
 
 ### Using Local LLM (Ollama)
-To use a local model via Ollama, you must configure CORS to allow the browser to connect to your local Ollama instance.
+Set CORS origins to allow connections to your local Ollama instance.
 
-1.  **Set the `OLLAMA_ORIGINS` environment variable**:
-    -   **macOS / Linux**:
-        ```bash
-        OLLAMA_ORIGINS="*" ollama serve
-        ```
-    -   **Windows**:
-        Set a User Environment Variable named `OLLAMA_ORIGINS` with value `*`, then restart Ollama.
+1.  **Set `OLLAMA_ORIGINS` Environment Variable**:
+    -   **Windows (PowerShell)**: `$env:OLLAMA_ORIGINS="*"; ollama serve`
+    -   **macOS / Linux**: `OLLAMA_ORIGINS="*" ollama serve`
 
-2.  **HTTPS Issues**:
-    If you are running the app via HTTPS (or some specific network setups), browsers may block connections to `http://localhost:11434`.
-    -   **Workaround**: Use `ngrok` to tunnel your local Ollama instance:
-        ```bash
-        ngrok http 11434 --host-header="localhost:11434"
-        ```
-    -   Then enter the ngrok URL in the App's settings under **Endpoint URL**.
-
-## 🎮 Usage Guide
-
-1.  **Start a Project**: Enter a keyword (e.g., "2025 Marketing Plan") and context. Click **Analyze & Start**.
-2.  **Expand Ideas**: Click on any node to generate related sub-nodes.
-3.  **Edit Nodes**: Double-click a node to edit its text.
-4.  **Tools**:
-    -   **Right-Click**: Select a node.
-    -   **Multi-Select**: Right-click multiple nodes to use "Explore Connect".
-    -   **Save/Load**: Use the sidebar to manage multiple brainstorming sessions.
+2.  **Remote Ollama**: 
+    If connecting to a remote Ollama server, ensure the **Endpoint URL** is correctly configured in settings. Version 0.2.0 features improved cross-origin request handling.
 
 ## 📄 License
 

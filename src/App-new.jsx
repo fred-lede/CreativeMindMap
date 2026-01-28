@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import {
   Send, Clock, X, Trash2, Zap, ZoomIn, ZoomOut, Loader2,
   Download, Upload, RotateCcw, RotateCw, FileJson, Save, Eraser, Edit2, Move, Settings, RefreshCw, CheckCircle, AlertCircle, Lightbulb, Target, Sparkles, Link2, Info,
@@ -243,6 +244,7 @@ export default function App() {
   const [showContextEditor, setShowContextEditor] = useState(false);
   const [toast, setToast] = useState(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [showProxySettings, setShowProxySettings] = useState(false);
   const [showOllamaHelp, setShowOllamaHelp] = useState(false);
 
   // NEW: State for search sources
@@ -258,11 +260,8 @@ export default function App() {
     ollama: 'idle'
   });
 
-  // NEW: State for Proxy Settings
-  const [showProxySettings, setShowProxySettings] = useState(false);
-
   const [aiConfig, setAiConfig] = useState({
-    provider: 'gemini', apiKey: '', geminiModel: 'gemini-2.0-flash',
+    provider: 'gemini', apiKey: '', geminiModel: 'gemini-2.5-flash-preview-09-2025',
     openaiApiKey: '', openaiModel: 'gpt-4o',
     localEndpoint: 'http://127.0.0.1:11434/api/generate', localModel: 'llama3',
     proxyPort: 11435,
@@ -272,10 +271,10 @@ export default function App() {
     localSearchProvider: 'serper', // 'serper' or 'tavily'
     serperApiKey: '',
     tavilyApiKey: '',
-    branchCount: 8, // Default 8 branches
+    branchCount: 8,
     defaultShape: 'circle',
     theme: 'default',
-    showGrid: true // NEW: Grid Visibility Toggle
+    showGrid: true
   });
 
   const currentTheme = THEMES[aiConfig.theme] || THEMES.default;
@@ -312,25 +311,19 @@ export default function App() {
         const cfg = JSON.parse(savedConfig);
         let migrated = false;
 
-        // Auto-correction for old or incorrect model names
+        // 自動修正舊的或錯誤的模型名稱
         if (cfg.geminiModel && cfg.geminiModel.includes('2.5')) {
           cfg.geminiModel = 'gemini-2.0-flash';
           migrated = true;
         }
-
-        // Migration for proxyPort conflict with Ollama
+        // NEW: Migration for proxyPort conflict with Ollama
         if (cfg.proxyPort === 11434 || !cfg.proxyPort) {
           cfg.proxyPort = 11435;
           migrated = true;
         }
-
-        // Ensure new fields exist
-        if (!cfg.openaiSearchDepth) {
-          cfg.openaiSearchDepth = 'low';
-          migrated = true;
-        }
-        if (!cfg.localSearchProvider) {
-          cfg.localSearchProvider = 'serper';
+        // Ensure localEndpoint is consistent
+        if (!cfg.localEndpoint) {
+          cfg.localEndpoint = 'http://127.0.0.1:11434/api/generate';
           migrated = true;
         }
 
@@ -366,7 +359,9 @@ export default function App() {
 
   const showToast = (message, type = 'info') => {
     setToast({ message, type });
-    setTimeout(() => setToast(null), 5000);
+    if (type !== 'error') {
+      setTimeout(() => setToast(null), 5000);
+    }
   };
 
   const handleCenterView = () => {
@@ -547,9 +542,25 @@ export default function App() {
   const fetchOllamaModels = async (endpointUrl) => {
     setFetchingModels(true); setFetchModelError(null);
     try {
-      const baseUrl = endpointUrl.replace(/\/api\/generate\/?$/, ''); const response = await fetch(`${baseUrl}/api/tags`);
-      if (response.status === 405) throw new Error(t.error405); if (!response.ok) throw new Error('Connection failed');
-      const data = await response.json();
+      let baseUrl = endpointUrl.replace(/\/api\/generate\/?$/, '');
+      // No longer need to replace localhost with 127.0.0.1 if using proxy, but good for fallback
+      baseUrl = baseUrl.replace('localhost', '127.0.0.1');
+
+      let data;
+      try {
+        data = await invoke('proxy_request', {
+          url: `${baseUrl}/api/tags`,
+          method: "GET",
+          body: null
+        });
+      } catch (invokeErr) {
+        console.warn("Proxy invoke failed for tags, using fetch fallback", invokeErr);
+        const response = await fetch(`${baseUrl}/api/tags`);
+        if (response.status === 405) throw new Error(t.error405);
+        if (!response.ok) throw new Error('Connection failed');
+        data = await response.json();
+      }
+
       if (data.models) { setLocalModelsList(data.models); if (data.models.length > 0) saveAiConfig({ ...aiConfig, localModel: data.models[0].name }); showToast("Ollama list updated", "success"); }
     } catch (err) { setFetchModelError(err.message.includes("Failed to fetch") ? t.errorMixedContent : err.message); showToast(err.message, "error"); setLocalModelsList([]); } finally { setFetchingModels(false); }
   };
@@ -559,7 +570,7 @@ export default function App() {
       const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${aiConfig.apiKey}`);
       if (!response.ok) throw new Error(response.statusText);
       const data = await response.json();
-      if (data.models) { setGeminiModelsList(data.models.filter(m => m.supportedGenerationMethods?.includes("generateContent")).map(m => ({ id: m.name.replace('models/', ''), name: m.displayName || m.name }))); showToast("Gemini list updated", "success"); }
+      if (data.models) { setGeminiModelsList(data.models.filter(m => m.supportedGenerationMethods?.includes("generateContent")).map(m => ({ id: m.name, name: m.displayName || m.name }))); showToast("Gemini list updated", "success"); }
     } catch (e) { setFetchModelError(e.message); showToast(e.message, "error"); } finally { setFetchingModels(false); }
   };
   const fetchOpenAIModels = async () => {
@@ -646,8 +657,12 @@ export default function App() {
         if (!res.ok) throw new Error(res.statusText);
       } else if (type === 'ollama') {
         let baseUrl = aiConfig.localEndpoint.replace(/\/api\/generate\/?$/, '').replace('localhost', '127.0.0.1');
-        const res = await fetch(`${baseUrl}/api/tags`);
-        if (!res.ok) throw new Error('Connection failed');
+        try {
+          await invoke('proxy_request', { url: `${baseUrl}/api/tags`, method: "GET", body: null });
+        } catch (err) {
+          const res = await fetch(`${baseUrl}/api/tags`);
+          if (!res.ok) throw new Error('Connection failed');
+        }
       }
       setApiStatus(prev => ({ ...prev, [type]: 'success' }));
       showToast(t.testSuccess, "success");
@@ -657,10 +672,12 @@ export default function App() {
       showToast(`${t.testError}: ${err.message}`, "error");
     }
   };
+
   const callAiApi = async (promptText, forceJson = true, retryCount = 0, skipSearch = false) => {
     let resultText = "";
     const now = new Date();
     const timeStr = `[Current Local Time: ${now.toLocaleString('zh-TW')} (${Intl.DateTimeFormat().resolvedOptions().timeZone})]`;
+    // 改為只在開頭注入時間，避免過多重複觸發模型的安全過濾 (Safety Filter)
     const enhancedPrompt = `${timeStr}\n\n${promptText}`;
 
     try {
@@ -668,6 +685,7 @@ export default function App() {
         let model = aiConfig.geminiModel || 'models/gemini-1.5-flash';
         if (!model.startsWith('models/')) model = `models/${model}`;
 
+        // 核心規則：開啟搜尋時絕對不要開啟 responseMimeType: "application/json"
         const isSearching = aiConfig.enableWebSearch && !skipSearch;
         const useJsonMode = forceJson && !isSearching;
 
@@ -697,6 +715,7 @@ export default function App() {
         if (!res.ok) {
           const e = await res.json().catch(() => ({}));
           const errMsg = e.error?.message || "";
+          // 自動回退機制：如果搜尋導致 Gemini 報空結果錯誤 (目前 API 的一個已知邊界問題)，改用無搜尋模式重試
           if (errMsg.includes("model output must contain") && isSearching) {
             console.warn("Gemini Search failed, falling back to standard AI...");
             return callAiApi(promptText, forceJson, retryCount, true);
@@ -705,6 +724,7 @@ export default function App() {
         }
         const data = await res.json();
 
+        // 檢查是否有候選回應
         if (!data.candidates || data.candidates.length === 0) {
           if (data.promptFeedback?.blockReason) {
             throw new Error(`Gemini blocked prompt: ${data.promptFeedback.blockReason}`);
@@ -718,6 +738,7 @@ export default function App() {
 
         let text = "";
         if (candidate.content && candidate.content.parts) {
+          // 彙整所有 Part 的文字，Gemini 有時會將搜尋結果與內容分段回傳
           text = candidate.content.parts.map(p => p.text || "").join("");
         }
 
@@ -725,21 +746,36 @@ export default function App() {
           throw new Error("Gemini returned an empty response. This may be due to regional search restrictions or safety triggers.");
         }
 
+        // --- 核心修復：更全面的來源提取與顯示邏輯 ---
         const groundingMetadata = candidate?.groundingMetadata;
         let sources = [];
+
         if (groundingMetadata) {
-          const attributions = groundingMetadata.groundingAttributions || [];
-          const chunks = groundingMetadata.groundingChunks || [];
-          const supports = groundingMetadata.groundingSupports || [];
-          sources = [...attributions, ...chunks, ...supports];
+          // 優先從 groundingAttributions 提取
+          if (groundingMetadata.groundingAttributions && Array.isArray(groundingMetadata.groundingAttributions)) {
+            sources = groundingMetadata.groundingAttributions;
+          }
+          // 新版：從 groundingChunks 提取 (更常用於最新 Gemini 模型)
+          else if (groundingMetadata.groundingChunks && Array.isArray(groundingMetadata.groundingChunks)) {
+            sources = groundingMetadata.groundingChunks.map(chunk => ({
+              web: {
+                uri: chunk.web?.uri || chunk.web?.url,
+                title: chunk.web?.title || "Search Result"
+              }
+            }));
+          }
         }
 
+        // 確保更新全域狀態，讓藍色圖示顯示
         setSearchSources(sources);
 
+        // 如果不是 JSON 模式（如深度分析、路徑總結、初次策略），則附加來源至 Markdown 末尾
         if (!forceJson && sources.length > 0) {
           const uniqueSources = new Map();
           sources.forEach(s => {
-            if (s.web?.uri && s.web?.title) uniqueSources.set(s.web.uri, s.web.title);
+            const uri = s.web?.uri || s.web?.url;
+            const title = s.web?.title || "Reference Source";
+            if (uri) uniqueSources.set(uri, title);
           });
 
           if (uniqueSources.size > 0) {
@@ -757,6 +793,7 @@ export default function App() {
       } else if (aiConfig.provider === 'openai') {
         const model = aiConfig.openaiModel || 'gpt-4o-mini-search-preview';
 
+        // 如果開啟搜尋，改用 OpenAI 的 Responses API (/v1/responses)
         if (aiConfig.enableWebSearch) {
           const sysPrompt = forceJson
             ? `You are a high-level Strategy Consultant extracting brainstorming data. 
@@ -780,7 +817,7 @@ export default function App() {
             ],
             tools: [{
               type: "web_search",
-              search_context_size: aiConfig.openaiSearchDepth || 'low'
+              search_context_size: aiConfig.openaiSearchDepth || 'low' // 使用設定的搜尋深度
             }]
           };
 
@@ -800,14 +837,19 @@ export default function App() {
 
           const data = await res.json();
 
+          // --- 終極深度解析 (OpenAI Responses API) ---
           let text = "";
           let citations = [];
 
+          // 1. 直取 root (最理想情況)
           text = data.output_text || "";
           citations = data.citations || [];
 
+          // 2. 深度遍歷 output 陣列
           if (data.output && Array.isArray(data.output)) {
             data.output.forEach(item => {
+              // A. 提取文字內容
+              // OpenAI Responses API 結構：item 本身可能是 message 或包含 content
               const messageObj = item.message || (item.type === 'message' ? item : null);
               const content = messageObj ? messageObj.content : (item.content || null);
 
@@ -816,6 +858,7 @@ export default function App() {
                   text += content;
                 } else if (Array.isArray(content)) {
                   content.forEach(part => {
+                    // OpenAI 可能使用 'text' 或 'output_text' 作為類型
                     if (part.type === 'text' || part.type === 'output_text') {
                       text += (part.text || part.output_text || "");
                       if (part.annotations) citations.push(...part.annotations);
@@ -825,12 +868,14 @@ export default function App() {
                 const msgCitations = (messageObj && messageObj.citations) ? messageObj.citations : [];
                 citations.push(...msgCitations);
               }
+              // 其次尋找次級 text / output_text
               else if (item.text || item.output_text) {
                 text += (item.text || item.output_text);
                 if (item.annotations) citations.push(...item.annotations);
                 if (item.citations) citations.push(...item.citations);
               }
 
+              // B. 提取參考連結 (從 tool_call 或是 message 中)
               if (item.type === 'web_search_call' && item.action?.sources) {
                 citations.push(...item.action.sources);
               }
@@ -839,6 +884,7 @@ export default function App() {
 
           if (!text.trim()) {
             console.error("OpenAI Responses 解析失敗", data);
+            // 最後一招：如果狀態是完成但沒抓到文字，嘗試從 data 整體找字串
             if (Object.keys(data).length > 0) {
               text = "無法自動辨識回傳格式，請提供下方數據給開發者：\n\n```json\n" + JSON.stringify(data, null, 2).substring(0, 1000) + "\n```";
             } else {
@@ -847,10 +893,11 @@ export default function App() {
           }
 
           let sources = citations.map(c => {
+            // OpenAI Citations 可以是多種結構
             const uri = c.url || c.uri || c.url_citation?.url || c.file_citation?.url;
             const title = c.title || c.url_citation?.title || c.filename || "OpenAI Source";
             return { web: { uri, title } };
-          }).filter(s => s.web.uri);
+          }).filter(s => s.web.uri); // 過濾無效連結
 
           setSearchSources(sources);
 
@@ -869,6 +916,7 @@ export default function App() {
           resultText = text;
 
         } else {
+          // 一般模式：維持原有的 Chat Completions API
           const payload = {
             model: model,
             messages: [
@@ -894,7 +942,7 @@ export default function App() {
 
           const data = await res.json();
           resultText = data.choices?.[0]?.message?.content || "";
-          setSearchSources([]);
+          setSearchSources([]); // 清空來源
         }
 
       } else if (aiConfig.provider === 'local') {
@@ -902,65 +950,100 @@ export default function App() {
         let finalPrompt = enhancedPrompt;
 
         if (aiConfig.enableWebSearch) {
-          let searchResults = [];
+          // 1. Identify search query
+          let searchQuery = promptText;
+          const relMatch = promptText.match(/Relate "([^"]+)" & "([^"]+)"/i);
+          const topicMatch = promptText.match(/Analyze topic "([^"]+)"/i);
+          const pathMatch = promptText.match(/Analyze the chain/i) ? promptText.match(/to "([^"]+)"/i) : null;
+          const focusMatch = promptText.match(/Topic: "([^"]+)"/i);
+          const genericMatch = promptText.match(/"([^"]+)"/i);
+
+          if (relMatch) searchQuery = `${relMatch[1]} ${relMatch[2]}`;
+          else if (topicMatch) searchQuery = topicMatch[1];
+          else if (pathMatch) searchQuery = pathMatch[1];
+          else if (focusMatch) searchQuery = focusMatch[1];
+          else if (genericMatch) searchQuery = genericMatch[1];
+
+          // Final Cleanup: Limit query length to 150 chars to avoid API rejection
+          if (searchQuery.length > 200) searchQuery = searchQuery.substring(0, 150);
+
           try {
-            if (aiConfig.localSearchProvider === 'serper') {
-              searchResults = await performSerperSearch(promptText);
-            } else if (aiConfig.localSearchProvider === 'tavily') {
-              searchResults = await performTavilySearch(promptText);
+            const results = aiConfig.localSearchProvider === 'serper'
+              ? await performSerperSearch(searchQuery)
+              : await performTavilySearch(searchQuery);
+
+            if (results && results.length > 0) {
+              const contextStr = results.map((r, i) => `[Source ${i + 1}] ${r.title}\nURL: ${r.link}\nSummary: ${r.snippet}`).join("\n\n");
+              finalPrompt = `Based on the following real-time search results, please answer the user's request.
+              
+              SEARCH RESULTS:
+              ${contextStr}
+              
+              USER REQUEST:
+              ${promptText}`;
+
+              // Update citations UI
+              setSearchSources(results.map(r => ({ web: { uri: r.link, title: r.title } })));
+
+              // If non-JSON mode, append citations text
+              if (!forceJson) {
+                finalPrompt += "\n\nPlease include references to the sources [Source X] in your analysis.";
+              }
             }
-
-            if (searchResults.length > 0) {
-              const searchContext = searchResults.map((r, i) =>
-                `[${i + 1}] ${r.title}\n${r.snippet}\nURL: ${r.link}`
-              ).join("\n\n");
-
-              finalPrompt = `${timeStr}\n\n以下是來自網路的最新搜尋結果：\n\n${searchContext}\n\n---\n\n請根據上述搜尋結果回答以下問題：\n${promptText}`;
-
-              const sources = searchResults.map(r => ({
-                web: { uri: r.link, title: r.title }
-              }));
-              setSearchSources(sources);
-            }
-          } catch (err) {
-            console.warn("Local search failed:", err);
-            showToast(`Search failed: ${err.message}`, "warning");
+          } catch (searchErr) {
+            console.error("Local search failed", searchErr);
+            showToast(`Search failed: ${searchErr.message}`, "warning");
           }
         }
 
-        const res = await fetch(endpoint, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            model: aiConfig.localModel,
-            prompt: finalPrompt + (forceJson ? " Ensure JSON." : ""),
-            stream: false,
-            format: forceJson ? "json" : undefined
-          })
-        });
+        const payload = {
+          model: aiConfig.localModel,
+          prompt: finalPrompt + (forceJson ? " Ensure JSON." : ""),
+          stream: false,
+          format: forceJson ? "json" : undefined
+        };
 
-        if (res.status === 405) throw new Error(t.error405);
-        if (!res.ok) throw new Error(res.statusText);
-        const d = await res.json();
-        resultText = d.response || d.choices?.[0]?.message?.content;
-
-        if (aiConfig.enableWebSearch && searchSources.length > 0 && !forceJson) {
-          resultText += "\n\n---\n### 🔍 參考來源 (Search Sources)\n";
-          let idx = 1;
-          searchSources.forEach(s => {
-            if (s.web?.uri) {
-              resultText += `${idx++}. [${s.web.title}](${s.web.uri})\n`;
-            }
+        try {
+          // Try using the Rust proxy command directly
+          const d = await invoke('proxy_request', {
+            url: endpoint,
+            method: "POST",
+            body: payload
           });
-          resultText += `\n*內容由 ${aiConfig.localSearchProvider === 'serper' ? 'Serper.dev' : 'Tavily'} 搜尋生成*`;
+          resultText = d.response || d.choices?.[0]?.message?.content;
+        } catch (err) {
+          console.error("Proxy invoke failed, falling back to fetch", err);
+          const res = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+          if (res.status === 405) throw new Error(t.error405);
+          if (!res.ok) throw new Error(res.statusText);
+          const d = await res.json();
+          resultText = d.response || d.choices?.[0]?.message?.content;
+        }
+
+        // For local provider, if search was enabled and it's not JSON mode, 
+        // we might want to manually append the reference list to the resultText 
+        // if the model didn't do it well.
+        if (aiConfig.enableWebSearch && !forceJson && searchSources.length > 0) {
+          const sources = searchSources;
+          const uniqueSources = new Map();
+          sources.forEach(s => {
+            const uri = s.web?.uri || s.web?.url;
+            const title = s.web?.title || "Reference Source";
+            if (uri) uniqueSources.set(uri, title);
+          });
+
+          if (uniqueSources.size > 0) {
+            resultText += "\n\n---\n### 🔍 參考來源 (Local Search Sources)\n";
+            let idx = 1;
+            uniqueSources.forEach((title, uri) => {
+              resultText += `${idx++}. [${title}](${uri})\n`;
+            });
+            resultText += `\n*內容由 Local LLM (${aiConfig.localModel}) 結合 ${aiConfig.localSearchProvider === 'serper' ? 'Serper.dev' : 'Tavily'} 搜尋即時生成*`;
+          }
         }
       }
-    } catch (e) {
-      if (e.message.includes("Failed to fetch")) throw new Error(window.location.protocol === 'https:' && aiConfig.provider === 'local' ? t.errorMixedContent : t.errorConnection);
-      throw e;
-    }
-    if (!resultText) throw new Error(t.errorNoContent);
-    return resultText;
+    } catch (e) { if (e.message.includes("Failed to fetch")) throw new Error(window.location.protocol === 'https:' && aiConfig.provider === 'local' ? t.errorMixedContent : t.errorConnection); throw e; }
+    if (!resultText) throw new Error(t.errorNoContent); return resultText;
   };
 
   const handleRegenerateStrategy = async () => {
@@ -968,8 +1051,13 @@ export default function App() {
     const rootNode = nodes.find(n => n.isRoot); const topic = rootNode ? (rootNode.zh || rootNode.text) : "Brainstorming";
     setIsRegeneratingStrategy(true);
     try {
-      const searchInst = aiConfig.provider === 'gemini' && aiConfig.enableWebSearch ? `Use Google Search to find top ${aiConfig.searchCount || 3} insights.` : "";
-      const res = await callAiApi(`Analyze topic "${topic}" with context "${contextDesc}". ${searchInst} Update strategy (max 100 words). Return JSON: {"strategy":"..."}`, true);
+      const searchInst = aiConfig.enableWebSearch ? `Use WEB SEARCH to find key strategic insights for "${topic}".` : "";
+      const res = await callAiApi(`Analyze topic "${topic}" within context "${contextDesc}". 
+        MISSION: Strategic Anchor.
+        ${searchInst} 
+        TASK: Update strategy (max 150 words). 
+        LANGUAGE: "strategy" must be in ENGLISH.
+        Return JSON: {"strategy":"..."}`, true);
       let strat = ""; try { strat = JSON.parse(res.replace(/```json/g, '').replace(/```/g, '').trim()).strategy; } catch (e) { strat = res; }
       setStrategyContext(strat); showToast(t.strategyUpdated, "success");
     } catch (e) { showToast(e.message, "error"); } finally { setIsRegeneratingStrategy(false); }
@@ -984,9 +1072,9 @@ export default function App() {
     const targetText = lang === 'zh-TW' ? (targetNode.zh || targetNode.text) : (targetNode.en || targetNode.text);
     setAnalysisResult({ title: `${t.pathSummary}: ${pathString}`, content: t.analyzeThinking });
     try {
-      const searchInst = aiConfig.provider === 'gemini' && aiConfig.enableWebSearch ? `Use Google Search to retrieve ${aiConfig.searchCount || 3} key facts to validate insights.` : "";
+      const searchInst = aiConfig.enableWebSearch ? `Use WEB SEARCH to find key facts and trends for this path.` : "";
       const targetLang = lang === 'zh-TW' ? 'Traditional Chinese (繁體中文)' : 'English';
-      const prompt = `Act as a top-tier Domain Expert. ${searchInst} Context: ${contextDesc}. Strategy: ${strategyContext}. Path: ${pathString}. Mission: Analyze the chain from root to "${targetText}". Output Requirements: CASE A (Problem Solving): Actionable solutions, methodology. CASE B (Innovation): Future potential, feasibility, required resources. Output strictly in ${targetLang} using Markdown. ${lang === 'zh-TW' ? "CRITICAL: The output MUST be in Traditional Chinese (繁體中文). Do NOT use English unless necessary for terms." : ""} Do not generate a reference list manually.`;
+      const prompt = `Act as Domain Expert. ${searchInst} Context: ${contextDesc}. Strategy: ${strategyContext}. Path: ${pathString}. Mission: Analyze the chain to "${targetText}". Output in ${targetLang} using Markdown.`;
       const result = await callAiApi(prompt, false);
       setAnalysisResult({ title: `${t.pathSummary}: ${pathString}`, content: result });
     } catch (e) { setAnalysisResult({ title: "Error", content: e.message }); } finally { setAnalyzing(false); }
@@ -1022,7 +1110,7 @@ export default function App() {
       const branchCount = aiConfig.branchCount || 8;
       const requestCount = branchCount * 3;
 
-      const searchInst = aiConfig.provider === 'gemini' && aiConfig.enableWebSearch ? `USE GOOGLE SEARCH to find top ${aiConfig.searchCount || 3} trends/facts. Infer nodes based on findings.` : "";
+      const searchInst = aiConfig.enableWebSearch ? `USE WEB SEARCH tool to find the top ${aiConfig.searchCount || 5} current trends, facts, and expert insights. Infer nodes based on these real-world findings.` : "";
 
       const now = new Date();
       const timeStrPrefix = `[Current Time: ${now.toLocaleString('zh-TW')} (${Intl.DateTimeFormat().resolvedOptions().timeZone})]`;
@@ -1125,8 +1213,8 @@ export default function App() {
     setAnalysisResult({ title: `${t.deepAnalyze}：${focusWord}`, content: t.analyzeThinking });
     try {
       const targetLang = lang === 'zh-TW' ? 'Traditional Chinese (繁體中文)' : 'English';
-      const searchInst = aiConfig.provider === 'gemini' && aiConfig.enableWebSearch ? `Use Google Search to retrieve top ${aiConfig.searchCount || 3} relevant sources.` : "";
-      const result = await callAiApi(`Act as Expert. ${searchInst} Context: ${contextDesc}. Strategy: ${strategyContext}. Topic: "${focusWord}". Task: Structural analysis (Definition, Relevance, Factors, Insight). Output in ${targetLang} using Markdown. ${lang === 'zh-TW' ? "CRITICAL: Output in Traditional Chinese." : ""} Do not generate a reference list manually.`, false);
+      const searchInst = aiConfig.enableWebSearch ? `Use WEB SEARCH to retrieve market data for "${focusWord}".` : "";
+      const result = await callAiApi(`Act as Expert Analyst. ${searchInst} Context: ${contextDesc}. Strategy: ${strategyContext}. Topic: "${focusWord}". Task: Structural analysis. Output in ${targetLang} Markdown.`, false);
       setAnalysisResult({ title: `${t.deepAnalyze}：${focusWord}`, content: result });
     } catch (error) { setAnalysisResult({ title: "Error", content: error.message }); } finally { setAnalyzing(false); }
   };
@@ -1138,8 +1226,9 @@ export default function App() {
     const w2 = lang === 'zh-TW' ? (selected[1].zh || selected[1].text) : (selected[1].en || selected[1].text);
     setAnalysisResult({ title: `${t.exploreConnect}：${w1} & ${w2}`, content: t.analyzeThinking });
     try {
+      const searchInst = aiConfig.enableWebSearch ? `Use WEB SEARCH to find intersections between these concepts.` : "";
       const targetLang = lang === 'zh-TW' ? 'Traditional Chinese (繁體中文)' : 'English';
-      const result = await callAiApi(`Relate "${w1}" & "${w2}". Context: ${contextDesc}. Output in ${targetLang} using Markdown.`, false);
+      const result = await callAiApi(`Relate "${w1}" & "${w2}". ${searchInst} Context: ${contextDesc}. Output in ${targetLang} Markdown.`, false);
       setAnalysisResult({ title: `${t.exploreConnect}：${w1} & ${w2}`, content: result });
     } catch (error) { setAnalysisResult({ title: "Error", content: error.message }); } finally { setAnalyzing(false); }
   };
@@ -1147,51 +1236,68 @@ export default function App() {
   const handleInitialSetup = async (e) => {
     e.preventDefault(); if (!inputValue.trim()) return; setIsInitializing(true);
     try {
-      const searchInst = aiConfig.provider === 'gemini' && aiConfig.enableWebSearch ? `Perform ${aiConfig.searchCount || 3} web searches to identify key trends.` : "";
+      const searchInst = aiConfig.enableWebSearch ? `Perform up to ${aiConfig.searchCount || 5} web searches to identify key trends, facts, and highly relevant data points for "${inputValue}" within its context.` : "";
 
-      // 1. Create Root Node Immediately (FIX: Never let AI replace this)
       const rootId = generateId();
       const initialText = inputValue;
 
+      // 1. Initial background analysis WITH search (Strategy & Translation)
+      // We wait for this BEFORE setting nodes so user sees the progress on the start screen
+      showToast(t.strategyLoading, "info");
+
+      const now = new Date();
+      const timeStr = `[Current Time: ${now.toLocaleString('zh-TW')} (${Intl.DateTimeFormat().resolvedOptions().timeZone})]`;
+      const res = await callAiApi(`${timeStr}
+        Analyze topic "${initialText}" STRICTLY within the provided context "${contextDesc}". 
+        MISSION: Act as a Strategic Anchor. Your goal is to ground the brainstorming in the user's specific objectives and constraints.
+        STRATEGY GUIDELINES:
+        1. CONTEXT FIRST: Prioritize the provided "Context" over general topic knowledge.
+        2. DEPTH OVER BREADTH: Provide a specialized strategy that deepens the focus.
+        3. NO GENERIC FILLER: Every instruction must be actionable and relevant to "${initialText}".
+        ${searchInst} 
+        Task: 
+        1. Provide a highly relevant "strategy" for brainstorming (max 150 words). 
+           CRITICAL: The "strategy" MUST be in ENGLISH and MUST be clean text without URLs or indices.
+        2. Translate topic to Traditional Chinese (zh) and English (en).
+        
+        Return JSON: {"strategy":"...", "zh":"...", "en":"..."}
+        ${timeStr}`, true);
+
+      let parsed = { strategy: "", zh: initialText, en: initialText };
+      try {
+        const jsonContent = res.replace(/```json/g, '').replace(/```/g, '').trim();
+        parsed = JSON.parse(jsonContent);
+      } catch (e) {
+        console.error("Failed to parse strategy JSON", e, res);
+      }
+
+      // Ensure strategy is set before transitioning
+      setStrategyContext(parsed.strategy || "");
+
+      // 2. Create Root Node and transition to canvas
       snapshot();
       setNodes([{
         id: rootId,
         text: initialText,
-        zh: initialText, // Always keep original input as master
-        en: initialText, // Initial fallback
+        zh: parsed.zh || initialText, // Use user text as fallback
+        en: parsed.en || initialText,
         x: 0, y: 0, selected: false, isRoot: true, color: currentTheme.accent, shape: aiConfig.defaultShape
       }]);
       setInputValue("");
       setViewTransform({ x: window.innerWidth / 2, y: window.innerHeight / 2, scale: 1 });
-      setTimeout(saveCurrentProject, 100);
 
-      // 2. Background Analysis (Strategy Only, Translation update only for secondary props)
-      showToast(t.analyzingStrategy, "info");
-      const res = await callAiApi(`Analyze topic "${initialText}" with context "${contextDesc}". ${searchInst} 
-        Task: 
-        1. Provide "strategy" for brainstorming (max 100 words).
-        2. Translate topic to Traditional Chinese (zh) and English (en).
-        
-        Return JSON: {"strategy":"...", "zh":"...", "en":"..."}
-        
-        CRITICAL: Output 'zh' MUST be Traditional Chinese.`, true);
+      // 3. Auto-open Strategy Editor to let user confirm/edit immediately as requested
+      setShowContextEditor(true);
+      showToast(t.strategyDone, "success");
 
-      let parsed = { strategy: "", zh: initialText, en: initialText };
-      try { parsed = JSON.parse(res.replace(/```json/g, '').replace(/```/g, '').trim()); } catch (e) { }
+      setTimeout(saveCurrentProject, 500);
 
-      setStrategyContext(parsed.strategy);
-
-      // RESTORED: Update translations so subtitle appears, but keep text as user input
-      setNodes(prev => prev.map(n => {
-        if (n.id === rootId) {
-          return { ...n, zh: parsed.zh || n.text, en: parsed.en || n.text };
-        }
-        return n;
-      }));
-
-      showToast(t.strategyUpdated, "success");
-
-    } catch (error) { showToast(error.message, 'error'); } finally { setIsInitializing(false); }
+    } catch (error) {
+      console.error("Setup failed", error);
+      showToast(error.message, 'error');
+    } finally {
+      setIsInitializing(false);
+    }
   };
 
   const handleNodeDoubleClick = (e, node) => {
@@ -1401,7 +1507,15 @@ export default function App() {
                 const uri = source.web?.uri;
                 if (!uri) return null;
                 return (
-                  <a key={index} href={uri} target="_blank" rel="noopener noreferrer" className="block p-3 rounded-xl border hover:bg-blue-50 transition-all group" style={{ borderColor: currentTheme.line }}>
+                  <button
+                    key={index}
+                    onClick={async (e) => {
+                      e.preventDefault();
+                      try { await invoke('open_url', { url: uri }); } catch (err) { window.open(uri, '_blank'); }
+                    }}
+                    className="w-full text-left block p-3 rounded-xl border hover:bg-blue-50 transition-all group pointer-events-auto"
+                    style={{ borderColor: currentTheme.line }}
+                  >
                     <div className="flex items-start gap-3">
                       <div className="mt-1 bg-blue-100 text-blue-600 p-1 rounded"><ExternalLink size={14} /></div>
                       <div>
@@ -1409,7 +1523,7 @@ export default function App() {
                         <div className="text-xs opacity-50 truncate max-w-[250px]">{uri}</div>
                       </div>
                     </div>
-                  </a>
+                  </button>
                 )
               })}
             </div>
@@ -1447,7 +1561,9 @@ export default function App() {
           ))}
         </div>
         <div className="p-4 border-t" style={{ borderColor: currentTheme.glassBorder }}>
-          <button onClick={() => setShowSettings(true)} className="flex items-center justify-center gap-2 text-xs opacity-70 hover:opacity-100 w-full transition-opacity"><Settings size={14} /> {t.settingsTitle}</button>
+          <div className="space-y-2">
+            <button onClick={() => setShowSettings(true)} className="flex items-center justify-center gap-2 text-xs opacity-70 hover:opacity-100 w-full transition-opacity"><Settings size={14} /> {t.settingsTitle}</button>
+          </div>
         </div>
       </div>
 
@@ -1621,148 +1737,277 @@ export default function App() {
 
       {showContextEditor && <div className="fixed inset-0 z-[80] bg-black/30 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setShowContextEditor(false)} onMouseDown={e => e.stopPropagation()} onWheel={e => e.stopPropagation()}><div className="p-6 rounded-2xl shadow-xl max-w-md w-full" style={{ backgroundColor: currentTheme.bg, color: currentTheme.text, border: `1px solid ${currentTheme.glassBorder}` }} onClick={e => e.stopPropagation()}><h3 className="text-lg font-bold mb-4 flex items-center gap-2"><Target size={20} className="text-blue-500" />{t.editContextTitle}</h3><div className="space-y-4"><div><label className="block text-sm font-semibold mb-1">{t.contextLabel}</label><textarea className="w-full p-3 border rounded-xl h-24 text-sm" value={contextDesc} onChange={e => setContextDesc(e.target.value)} placeholder={t.contextPlaceholder} style={{ backgroundColor: currentTheme.glass, color: currentTheme.text, borderColor: currentTheme.line }} /></div><div><label className="block text-sm font-semibold mb-1 flex justify-between">{t.strategyLabel}<button onClick={handleRegenerateStrategy} disabled={isRegeneratingStrategy || !contextDesc.trim()} className="text-xs text-blue-600 flex items-center gap-1">{isRegeneratingStrategy ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}{isRegeneratingStrategy ? t.strategyUpdating : t.regenerateStrategy}</button></label><textarea className="w-full p-3 border rounded-xl h-24 text-sm bg-yellow-50" value={strategyContext} onChange={e => setStrategyContext(e.target.value)} placeholder="AI Strategy..." style={{ backgroundColor: currentTheme.id === 'tech' ? '#1e293b' : '#fefce8', color: currentTheme.text, borderColor: currentTheme.line }} /></div></div><div className="flex justify-end gap-2 mt-6"><button onClick={() => setShowContextEditor(false)} className="px-4 py-2 rounded-lg opacity-70 hover:opacity-100" style={{ backgroundColor: currentTheme.line }}>{t.cancel}</button><button onClick={() => { setShowContextEditor(false); saveCurrentProject() }} className="px-4 py-2 bg-black text-white rounded-lg hover:bg-gray-800">{t.updateBtn}</button></div></div></div>}
 
-      {nodes.length === 0 && <div className="fixed inset-0 z-[55] flex items-center justify-center p-4 bg-white/50 backdrop-blur-sm" onMouseDown={e => e.stopPropagation()} onWheel={e => e.stopPropagation()}><div className="border shadow-2xl rounded-3xl p-8 max-w-lg w-full" style={{ backgroundColor: currentTheme.bg, color: currentTheme.text, borderColor: currentTheme.glassBorder }} onClick={e => e.stopPropagation()}><h2 className="text-2xl font-bold mb-2 flex items-center gap-2"><Lightbulb className="text-yellow-500 fill-yellow-500" />{t.title}</h2><p className="text-sm opacity-60 mb-6">{t.subtitle}</p><form onSubmit={handleInitialSetup} className="space-y-4"><div><label className="block text-sm font-bold mb-1">{t.keywordLabel}</label><input className="w-full p-4 border rounded-xl text-lg font-bold outline-none" value={inputValue} onChange={e => setInputValue(e.target.value)} placeholder={t.keywordPlaceholder} style={{ backgroundColor: currentTheme.glass, borderColor: currentTheme.line }} /></div><div><label className="block text-sm font-bold mb-1">{t.contextLabel}</label><textarea className="w-full p-4 border rounded-xl h-24 resize-none text-sm outline-none" value={contextDesc} onChange={e => setContextDesc(e.target.value)} placeholder={t.contextPlaceholder} style={{ backgroundColor: currentTheme.glass, borderColor: currentTheme.line }} /></div><div className="flex items-center gap-3 p-3 rounded-xl border" style={{ borderColor: currentTheme.line }}>{aiConfig.provider === 'gemini' ? (<><button type="button" onClick={() => setAiConfig(p => ({ ...p, enableWebSearch: !p.enableWebSearch }))} className={`w-10 h-6 rounded-full relative transition ${aiConfig.enableWebSearch ? 'bg-blue-500' : 'bg-gray-300'}`}><div className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition ${aiConfig.enableWebSearch ? 'translate-x-4' : ''}`} /></button><div className="flex-1"><label className="block text-sm font-bold flex gap-1"><Search size={14} />{t.searchLabel}</label><p className="text-[10px] opacity-60">{t.searchNote}</p></div></>) : (<div className="flex gap-2 opacity-50"><Lock size={16} /><span className="text-sm">{t.searchNoteDisabled}</span></div>)}</div><button type="submit" disabled={!inputValue.trim() || isInitializing} className="w-full py-4 bg-black text-white rounded-xl font-bold flex justify-center gap-2 hover:bg-gray-800 transition-colors">{isInitializing ? <Loader2 className="animate-spin" /> : null}{isInitializing ? (aiConfig.enableWebSearch ? t.analyzingStrategyWithSearch : t.analyzingStrategy) : t.startBtn}</button><div className="flex justify-center gap-4 text-xs mt-4 opacity-60"><button type="button" onClick={() => fileInputRef.current?.click()} className="flex gap-1 hover:text-black"><Upload size={12} />{t.importBtn}</button><button type="button" onClick={() => setIsSidebarOpen(true)} className="flex gap-1 hover:text-black"><FolderOpen size={12} />{t.historyBtn}</button></div></form></div></div>}
-
-      {showSettings && <div className="fixed inset-0 z-[80] bg-black/20 backdrop-blur-sm flex items-center justify-center p-4" onMouseDown={e => e.stopPropagation()} onWheel={e => e.stopPropagation()}><div className="p-6 rounded-3xl shadow-2xl w-full max-w-md" style={{ backgroundColor: currentTheme.bg, color: currentTheme.text, border: `1px solid ${currentTheme.glassBorder}` }} onClick={e => e.stopPropagation()}><div className="flex justify-between items-center mb-6"><h2 className="font-bold text-xl">{t.settingsTitle} <span className="text-sm font-normal opacity-50 ml-2">v{appVersion}</span></h2><button onClick={() => setShowSettings(false)}><X /></button></div><div className="space-y-4"><div><label className="text-sm font-bold block mb-1">{t.workspaceLabel}</label><input value={aiConfig.workspaceName} onChange={e => saveAiConfig({ ...aiConfig, workspaceName: e.target.value })} className="w-full p-2 border rounded-xl" style={{ backgroundColor: currentTheme.glass, borderColor: currentTheme.line }} /></div><div><label className="text-sm font-bold block mb-1">{t.shapeLabel}</label><div className="grid grid-cols-3 gap-2">{Object.entries(NODE_SHAPES).map(([k, s]) => <button key={k} onClick={() => saveAiConfig({ ...aiConfig, defaultShape: k })} className={`p-2 border rounded-xl flex flex-col items-center transition-all ${aiConfig.defaultShape === k ? 'border-blue-500 bg-blue-50/10' : ''}`} style={{ borderColor: aiConfig.defaultShape === k ? '#3b82f6' : currentTheme.line }}><s.icon size={20} /><span className="text-[10px]">{s.name.split(' ')[0]}</span></button>)}</div></div><div><label className="text-sm font-bold block mb-1">{t.themeLabel}</label><div className="grid grid-cols-3 gap-2">{Object.values(THEMES).map(th => <button key={th.id} onClick={() => saveAiConfig({ ...aiConfig, theme: th.id })} className={`p-2 border rounded-xl text-xs font-bold transition-all ${aiConfig.theme === th.id ? 'ring-2 ring-blue-500' : ''}`} style={{ backgroundColor: th.bg, color: th.text, borderColor: th.glassBorder }}>{t[`theme${th.name.split(' ')[0]}`] || th.name}</button>)}</div></div>
-
-        {/* Global Branch Count */}
-        <div>
-          <div className="flex justify-between text-sm font-bold mb-1">
-            <label>{t.branchCountLabel}</label>
-            <span>{aiConfig.branchCount || 8}</span>
-          </div>
-          <input
-            type="range"
-            min="4"
-            max="12"
-            value={aiConfig.branchCount || 8}
-            onChange={(e) => saveAiConfig({ ...aiConfig, branchCount: parseInt(e.target.value) })}
-            className="w-full h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer"
-          />
-        </div>
-
-        {/* NEW: Global Grid Toggle */}
-        <div className="flex items-center justify-between">
-          <label className="text-sm font-bold">{t.gridLabel}</label>
-          <button
-            onClick={() => saveAiConfig({ ...aiConfig, showGrid: !aiConfig.showGrid })}
-            className={`w-12 h-7 rounded-full transition-colors relative ${aiConfig.showGrid ? 'bg-blue-600' : 'bg-gray-300'}`}
-          >
-            <div className={`absolute top-1 left-1 w-5 h-5 bg-white rounded-full transition-transform ${aiConfig.showGrid ? 'translate-x-5' : ''}`}></div>
-          </button>
-        </div>
-
-        <hr style={{ borderColor: currentTheme.line }} /><div><label className="text-sm font-bold block mb-2">{t.providerLabel}</label><div className="flex p-1 rounded-xl" style={{ backgroundColor: currentTheme.line }}><button onClick={() => saveAiConfig({ ...aiConfig, provider: 'gemini' })} className={`flex-1 py-1 rounded-lg text-xs ${aiConfig.provider === 'gemini' ? 'shadow' : ''}`} style={{ backgroundColor: aiConfig.provider === 'gemini' ? currentTheme.bg : 'transparent' }}>Gemini</button><button onClick={() => saveAiConfig({ ...aiConfig, provider: 'openai' })} className={`flex-1 py-1 rounded-lg text-xs ${aiConfig.provider === 'openai' ? 'shadow' : ''}`} style={{ backgroundColor: aiConfig.provider === 'openai' ? currentTheme.bg : 'transparent' }}>OpenAI</button><button onClick={() => saveAiConfig({ ...aiConfig, provider: 'local' })} className={`flex-1 py-1 rounded-lg text-xs ${aiConfig.provider === 'local' ? 'shadow' : ''}`} style={{ backgroundColor: aiConfig.provider === 'local' ? currentTheme.bg : 'transparent' }}>Local</button></div></div>{aiConfig.provider === 'gemini' && <div className="space-y-2"><input type={apiKeyFocused ? "text" : "password"} onFocus={() => setApiKeyFocused(true)} onBlur={() => setApiKeyFocused(false)} value={!apiKeyFocused && aiConfig.apiKey ? "***" : aiConfig.apiKey} onChange={e => saveAiConfig({ ...aiConfig, apiKey: e.target.value })} placeholder="Gemini Key" className="w-full p-2 border rounded-xl" style={{ backgroundColor: currentTheme.glass, borderColor: currentTheme.line }} /><div className="flex justify-between items-center"><label className="text-xs font-bold">{t.modelLabel}</label><button onClick={fetchGeminiModels} className="text-[10px] text-blue-500 flex gap-1 items-center">{fetchingModels ? <Loader2 className="animate-spin" size={10} /> : <RefreshCw size={10} />}{t.refreshModels}</button></div><select className="w-full p-2 border rounded-xl" value={aiConfig.geminiModel} onChange={e => saveAiConfig({ ...aiConfig, geminiModel: e.target.value })} style={{ backgroundColor: currentTheme.glass, borderColor: currentTheme.line }}>{geminiModelsList.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}</select><div className={`p-3 rounded-xl border space-y-3`} style={{ borderColor: currentTheme.line }}><div className="flex items-center justify-between"><div><label className="block text-sm font-semibold flex items-center gap-1"><Search size={14} /> {t.searchLabel}</label><p className="text-[10px] opacity-60">{t.searchNote}</p></div><button onClick={() => saveAiConfig({ ...aiConfig, enableWebSearch: !aiConfig.enableWebSearch })} className={`w-12 h-7 rounded-full transition-colors relative ${aiConfig.enableWebSearch ? 'bg-blue-600' : 'bg-gray-300'}`}><div className={`absolute top-1 left-1 w-5 h-5 bg-white rounded-full transition-transform ${aiConfig.enableWebSearch ? 'translate-x-5' : ''}`} /></button></div>{aiConfig.enableWebSearch && (<div><div className="flex justify-between text-xs mb-1"><span>{t.searchCountLabel}</span><span>{aiConfig.searchCount}</span></div><input type="range" min="1" max="30" value={aiConfig.searchCount} onChange={(e) => saveAiConfig({ ...aiConfig, searchCount: parseInt(e.target.value) })} className="w-full h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer" /></div>)}</div></div>}
-        {aiConfig.provider === 'openai' && (
-          <div className="space-y-4">
-            <div className="relative">
-              <input
-                type={apiKeyFocused ? "text" : "password"}
-                onFocus={() => setApiKeyFocused(true)}
-                onBlur={() => setApiKeyFocused(false)}
-                value={!apiKeyFocused && aiConfig.openaiApiKey ? "************" : aiConfig.openaiApiKey}
-                onChange={e => saveAiConfig({ ...aiConfig, openaiApiKey: e.target.value })}
-                placeholder="OpenAI Key"
-                className="w-full p-2 pr-24 border rounded-xl"
-                style={{ backgroundColor: currentTheme.glass, borderColor: currentTheme.line }}
-              />
-              <button
-                onClick={() => handleTestConnection('openai')}
-                disabled={apiStatus.openai === 'testing'}
-                className="absolute right-2 top-1.5 px-3 py-1 bg-black/5 hover:bg-black/10 rounded-lg text-[10px] font-bold flex items-center gap-1 transition-colors"
-              >
-                {apiStatus.openai === 'testing' ? <Loader2 size={10} className="animate-spin" /> : <div className={`w-2 h-2 rounded-full ${apiStatus.openai === 'success' ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]' : apiStatus.openai === 'error' ? 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)]' : 'bg-gray-400'}`} />}
-                {t.testConnection}
+      {nodes.length === 0 && <div className="fixed inset-0 z-[55] flex items-center justify-center p-4 bg-white/50 backdrop-blur-sm" onMouseDown={e => e.stopPropagation()} onWheel={e => e.stopPropagation()}><div className="border shadow-2xl rounded-3xl p-8 max-w-lg w-full" style={{ backgroundColor: currentTheme.bg, color: currentTheme.text, borderColor: currentTheme.glassBorder }} onClick={e => e.stopPropagation()}><h2 className="text-2xl font-bold mb-2 flex items-center gap-2"><Lightbulb className="text-yellow-500 fill-yellow-500" />{t.title}</h2><p className="text-sm opacity-60 mb-6">{t.subtitle}</p><form onSubmit={handleInitialSetup} className="space-y-4"><div><label className="block text-sm font-bold mb-1">{t.keywordLabel}</label><input className="w-full p-4 border rounded-xl text-lg font-bold outline-none" value={inputValue} onChange={e => setInputValue(e.target.value)} placeholder={t.keywordPlaceholder} style={{ backgroundColor: currentTheme.glass, borderColor: currentTheme.line }} /></div><div><label className="block text-sm font-bold mb-1">{t.contextLabel}</label><textarea className="w-full p-4 border rounded-xl h-24 resize-none text-sm outline-none" value={contextDesc} onChange={e => setContextDesc(e.target.value)} placeholder={t.contextPlaceholder} style={{ backgroundColor: currentTheme.glass, borderColor: currentTheme.line }} /></div>
+        <div className="flex items-center gap-3 p-3 rounded-xl border" style={{ borderColor: currentTheme.line }}>
+          {(aiConfig.provider === 'gemini' || aiConfig.provider === 'openai' || aiConfig.provider === 'local') ? (
+            <>
+              <button type="button" onClick={() => setAiConfig(p => ({ ...p, enableWebSearch: !p.enableWebSearch }))} className={`w-10 h-6 rounded-full relative transition ${aiConfig.enableWebSearch ? 'bg-blue-500' : 'bg-gray-300'}`}>
+                <div className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition ${aiConfig.enableWebSearch ? 'translate-x-4' : ''}`} />
               </button>
-            </div>
-            <div className="flex justify-between items-center">
-              <label className="text-xs font-bold">{t.modelLabel}</label>
-              <button onClick={fetchOpenAIModels} className="text-[10px] text-blue-500 flex gap-1 items-center">{fetchingModels ? <Loader2 className="animate-spin" size={10} /> : <RefreshCw size={10} />}{t.refreshModels}</button>
-            </div>
-            <select className="w-full p-2 border rounded-xl" value={aiConfig.openaiModel} onChange={e => saveAiConfig({ ...aiConfig, openaiModel: e.target.value })} style={{ backgroundColor: currentTheme.glass, borderColor: currentTheme.line }}>{openAIModelsList.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}</select>
-            <div className="p-3 rounded-xl border space-y-3" style={{ borderColor: currentTheme.line }}>
-              <div className="flex items-center justify-between">
-                <div><label className="block text-sm font-semibold flex items-center gap-1"><Search size={14} /> {t.searchLabel}</label><p className="text-[10px] opacity-60">OpenAI Responses API Search</p></div>
-                <button onClick={() => saveAiConfig({ ...aiConfig, enableWebSearch: !aiConfig.enableWebSearch })} className={`w-12 h-7 rounded-full transition-colors relative ${aiConfig.enableWebSearch ? 'bg-blue-600' : 'bg-gray-300'}`}><div className={`absolute top-1 left-1 w-5 h-5 bg-white rounded-full transition-transform ${aiConfig.enableWebSearch ? 'translate-x-5' : ''}`} /></button>
+              <div className="flex-1">
+                <label className="block text-sm font-bold flex gap-1"><Search size={14} />{t.searchLabel}</label>
+                <p className="text-[10px] opacity-60">
+                  {aiConfig.provider === 'openai' ? "OpenAI Web Search" : aiConfig.provider === 'local' ? "Local Web Search (Serper/Tavily)" : t.searchNote}
+                </p>
               </div>
-              {aiConfig.enableWebSearch && (
-                <div className="space-y-2">
-                  <label className="block text-xs font-bold opacity-70">{t.searchDepthLabel}</label>
-                  <div className="grid grid-cols-3 gap-2">
-                    {['low', 'medium', 'high'].map(depth => (
-                      <button key={depth} onClick={() => saveAiConfig({ ...aiConfig, openaiSearchDepth: depth })} className={`py-1.5 rounded-lg text-[10px] font-bold border transition-all ${aiConfig.openaiSearchDepth === depth ? 'bg-blue-500 text-white border-blue-600 shadow-sm' : 'bg-white border-gray-200 hover:bg-gray-50'}`}>{t[`searchDepth${depth.charAt(0).toUpperCase() + depth.slice(1)}`]}</button>
-                    ))}
-                  </div>
-                </div>
-              )}
+            </>
+          ) : (
+            <div className="flex gap-2 opacity-50"><Lock size={16} /><span className="text-sm">{t.searchNoteDisabled}</span></div>
+          )}
+        </div>
+        <button type="submit" disabled={!inputValue.trim() || isInitializing} className="w-full py-4 bg-black text-white rounded-xl font-bold flex justify-center gap-2 hover:bg-gray-800 transition-colors">{isInitializing ? <Loader2 className="animate-spin" /> : null}{isInitializing ? (aiConfig.enableWebSearch ? t.analyzingStrategyWithSearch : t.analyzingStrategy) : t.startBtn}</button><div className="flex justify-center gap-4 text-xs mt-4 opacity-60"><button type="button" onClick={() => fileInputRef.current?.click()} className="flex gap-1 hover:text-black"><Upload size={12} />{t.importBtn}</button><button type="button" onClick={() => setIsSidebarOpen(true)} className="flex gap-1 hover:text-black"><FolderOpen size={12} />{t.historyBtn}</button></div></form></div></div>}
+
+      {showSettings && (
+        <div className="fixed inset-0 z-[80] bg-black/20 backdrop-blur-sm flex items-center justify-center p-4" onMouseDown={e => e.stopPropagation()} onWheel={e => e.stopPropagation()}>
+          <div className="p-6 rounded-3xl shadow-2xl w-full max-w-md max-h-[90vh] flex flex-col" style={{ backgroundColor: currentTheme.bg, color: currentTheme.text, border: `1px solid ${currentTheme.glassBorder}` }} onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-6 flex-shrink-0">
+              <h2 className="font-bold text-xl">{t.settingsTitle} <span className="text-sm font-normal opacity-50 ml-2">v{appVersion}</span></h2>
+              <button onClick={() => setShowSettings(false)}><X /></button>
             </div>
-          </div>
-        )}
-        {aiConfig.provider === 'local' && (
-          <div className="space-y-3">
-            <div className="p-3 rounded-xl border bg-blue-50/10 space-y-3" style={{ borderColor: currentTheme.glassBorder }}>
-              <label className="text-xs font-bold block">{t.endpointLabel}</label>
-              <div className="relative">
+            <div className="space-y-4 overflow-y-auto flex-1 pr-2 custom-scrollbar">
+              <div><label className="text-sm font-bold block mb-1">{t.workspaceLabel}</label><input value={aiConfig.workspaceName} onChange={e => saveAiConfig({ ...aiConfig, workspaceName: e.target.value })} className="w-full p-2 border rounded-xl" style={{ backgroundColor: currentTheme.glass, borderColor: currentTheme.line }} /></div>
+              <div><label className="text-sm font-bold block mb-1">{t.shapeLabel}</label><div className="grid grid-cols-3 gap-2">{Object.entries(NODE_SHAPES).map(([k, s]) => <button key={k} onClick={() => saveAiConfig({ ...aiConfig, defaultShape: k })} className={`p-2 border rounded-xl flex flex-col items-center transition-all ${aiConfig.defaultShape === k ? 'border-blue-500 bg-blue-50/10' : ''}`} style={{ borderColor: aiConfig.defaultShape === k ? '#3b82f6' : currentTheme.line }}><s.icon size={20} /><span className="text-[10px]">{s.name.split(' ')[0]}</span></button>)}</div></div>
+              <div><label className="text-sm font-bold block mb-1">{t.themeLabel}</label><div className="grid grid-cols-3 gap-2">{Object.values(THEMES).map(th => <button key={th.id} onClick={() => saveAiConfig({ ...aiConfig, theme: th.id })} className={`p-2 border rounded-xl text-xs font-bold transition-all ${aiConfig.theme === th.id ? 'ring-2 ring-blue-500' : ''}`} style={{ backgroundColor: th.bg, color: th.text, borderColor: th.glassBorder }}>{t[`theme${th.name.split(' ')[0]}`] || th.name}</button>)}</div></div>
+
+              {/* Global Branch Count */}
+              <div>
+                <div className="flex justify-between text-sm font-bold mb-1">
+                  <label>{t.branchCountLabel}</label>
+                  <span>{aiConfig.branchCount || 8}</span>
+                </div>
                 <input
-                  value={aiConfig.localEndpoint}
-                  onChange={e => saveAiConfig({ ...aiConfig, localEndpoint: e.target.value })}
-                  className="w-full p-2 pr-24 border rounded-xl text-xs"
-                  style={{ backgroundColor: currentTheme.glass, borderColor: currentTheme.line }}
+                  type="range"
+                  min="4"
+                  max="12"
+                  value={aiConfig.branchCount || 8}
+                  onChange={(e) => saveAiConfig({ ...aiConfig, branchCount: parseInt(e.target.value) })}
+                  className="w-full h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer"
                 />
+              </div>
+
+              {/* NEW: Global Grid Toggle */}
+              <div className="flex items-center justify-between">
+                <label className="text-sm font-bold">{t.gridLabel}</label>
                 <button
-                  onClick={() => handleTestConnection('ollama')}
-                  disabled={apiStatus.ollama === 'testing'}
-                  className="absolute right-2 top-1.5 px-3 py-1 bg-black/5 hover:bg-black/10 rounded-lg text-[10px] font-bold flex items-center gap-1 transition-colors"
+                  onClick={() => saveAiConfig({ ...aiConfig, showGrid: !aiConfig.showGrid })}
+                  className={`w-12 h-7 rounded-full transition-colors relative ${aiConfig.showGrid ? 'bg-blue-600' : 'bg-gray-300'}`}
                 >
-                  {apiStatus.ollama === 'testing' ? <Loader2 size={10} className="animate-spin" /> : <div className={`w-2 h-2 rounded-full ${apiStatus.ollama === 'success' ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]' : apiStatus.ollama === 'error' ? 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)]' : 'bg-gray-400'}`} />}
-                  {t.testConnection}
+                  <div className={`absolute top-1 left-1 w-5 h-5 bg-white rounded-full transition-transform ${aiConfig.showGrid ? 'translate-x-5' : ''}`}></div>
                 </button>
               </div>
-              <div className="flex justify-between items-center">
-                <button onClick={() => setShowOllamaHelp(true)} className="text-[10px] text-blue-500 flex gap-1"><HelpCircle size={10} /> {t.helpBtn}</button>
-                <button onClick={() => fetchOllamaModels(aiConfig.localEndpoint)} className="text-[10px] text-blue-500 flex gap-1">{fetchingModels ? <Loader2 className="animate-spin" size={10} /> : <RefreshCw size={10} />} {t.refreshBtn}</button>
+
+              <hr style={{ borderColor: currentTheme.line }} />
+
+              <div>
+                <label className="text-sm font-bold block mb-2">{t.providerLabel}</label>
+                <div className="flex p-1 rounded-xl" style={{ backgroundColor: currentTheme.line }}>
+                  {['gemini', 'openai', 'local'].map(p => (
+                    <button key={p} onClick={() => saveAiConfig({ ...aiConfig, provider: p })} className={`flex-1 py-1 rounded-lg text-xs capitalize ${aiConfig.provider === p ? 'bg-white shadow' : ''}`} style={{ backgroundColor: aiConfig.provider === p ? currentTheme.bg : 'transparent' }}>{p}</button>
+                  ))}
+                </div>
               </div>
-            </div>
-            {localModelsList.length > 0 ? (
-              <select className="w-full p-2 border rounded-xl" value={aiConfig.localModel} onChange={e => saveAiConfig({ ...aiConfig, localModel: e.target.value })} style={{ backgroundColor: currentTheme.glass, borderColor: currentTheme.line }}>{localModelsList.map(m => <option key={m.name} value={m.name}>{m.name}</option>)}</select>
-            ) : (
-              <input className="w-full p-2 border rounded-xl" value={aiConfig.localModel} onChange={e => saveAiConfig({ ...aiConfig, localModel: e.target.value })} placeholder={t.modelNamePlaceholder} style={{ backgroundColor: currentTheme.glass, borderColor: currentTheme.line }} />
-            )}
-            <div className="p-3 rounded-xl border space-y-3" style={{ borderColor: currentTheme.line }}>
-              <div className="flex items-center justify-between">
-                <div><label className="block text-sm font-semibold flex items-center gap-1"><Search size={14} /> {t.searchLabel}</label><p className="text-[10px] opacity-60">Search-Augmented Generation (SAG)</p></div>
-                <button onClick={() => saveAiConfig({ ...aiConfig, enableWebSearch: !aiConfig.enableWebSearch })} className={`w-12 h-7 rounded-full transition-colors relative ${aiConfig.enableWebSearch ? 'bg-blue-600' : 'bg-gray-300'}`}><div className={`absolute top-1 left-1 w-5 h-5 bg-white rounded-full transition-transform ${aiConfig.enableWebSearch ? 'translate-x-5' : ''}`} /></button>
-              </div>
-              {aiConfig.enableWebSearch && (
+
+              {aiConfig.provider === 'gemini' && (
                 <div className="space-y-2">
-                  <div>
-                    <label className="text-[10px] font-bold block mb-1">{t.localSearchProviderLabel}</label>
-                    <div className="flex p-1 rounded-lg" style={{ backgroundColor: currentTheme.line }}>
-                      <button onClick={() => saveAiConfig({ ...aiConfig, localSearchProvider: 'serper' })} className={`flex-1 py-1 rounded-md text-[10px] ${aiConfig.localSearchProvider === 'serper' ? 'bg-white shadow' : ''}`} style={{ backgroundColor: aiConfig.localSearchProvider === 'serper' ? currentTheme.bg : 'transparent', color: currentTheme.text }}>Serper.dev</button>
-                      <button onClick={() => saveAiConfig({ ...aiConfig, localSearchProvider: 'tavily' })} className={`flex-1 py-1 rounded-md text-[10px] ${aiConfig.localSearchProvider === 'tavily' ? 'bg-white shadow' : ''}`} style={{ backgroundColor: aiConfig.localSearchProvider === 'tavily' ? currentTheme.bg : 'transparent', color: currentTheme.text }}>Tavily</button>
+                  <div className="relative">
+                    <input
+                      type={apiKeyFocused ? "text" : "password"}
+                      onFocus={() => setApiKeyFocused(true)}
+                      onBlur={() => setApiKeyFocused(false)}
+                      value={!apiKeyFocused && aiConfig.apiKey ? "************" : aiConfig.apiKey}
+                      onChange={e => saveAiConfig({ ...aiConfig, apiKey: e.target.value })}
+                      placeholder="Gemini Key"
+                      className="w-full p-2 pr-24 border rounded-xl"
+                      style={{ backgroundColor: currentTheme.glass, borderColor: currentTheme.line }}
+                    />
+                    <button
+                      onClick={() => handleTestConnection('gemini')}
+                      disabled={apiStatus.gemini === 'testing'}
+                      className="absolute right-2 top-1.5 px-3 py-1 bg-black/5 hover:bg-black/10 rounded-lg text-[10px] font-bold flex items-center gap-1 transition-colors"
+                    >
+                      {apiStatus.gemini === 'testing' ? <Loader2 size={10} className="animate-spin" /> : <div className={`w-2 h-2 rounded-full ${apiStatus.gemini === 'success' ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]' : apiStatus.gemini === 'error' ? 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)]' : 'bg-gray-400'}`} />}
+                      {t.testConnection}
+                    </button>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <label className="text-xs font-bold">{t.modelLabel}</label>
+                    <button onClick={fetchGeminiModels} className="text-[10px] text-blue-500 flex gap-1 items-center">{fetchingModels ? <Loader2 className="animate-spin" size={10} /> : <RefreshCw size={10} />}{t.refreshModels}</button>
+                  </div>
+                  <select className="w-full p-2 border rounded-xl" value={aiConfig.geminiModel} onChange={e => saveAiConfig({ ...aiConfig, geminiModel: e.target.value })} style={{ backgroundColor: currentTheme.glass, borderColor: currentTheme.line }}>{geminiModelsList.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}</select>
+                  <div className="p-3 rounded-xl border space-y-3" style={{ borderColor: currentTheme.line }}>
+                    <div className="flex items-center justify-between">
+                      <div><label className="block text-sm font-semibold flex items-center gap-1"><Search size={14} /> {t.searchLabel}</label><p className="text-[10px] opacity-60">{t.searchNote}</p></div>
+                      <button onClick={() => saveAiConfig({ ...aiConfig, enableWebSearch: !aiConfig.enableWebSearch })} className={`w-12 h-7 rounded-full transition-colors relative ${aiConfig.enableWebSearch ? 'bg-blue-600' : 'bg-gray-300'}`}><div className={`absolute top-1 left-1 w-5 h-5 bg-white rounded-full transition-transform ${aiConfig.enableWebSearch ? 'translate-x-5' : ''}`} /></button>
+                    </div>
+                    {aiConfig.enableWebSearch && (
+                      <div>
+                        <div className="flex justify-between text-xs mb-1"><span>{t.searchCountLabel}</span><span>{aiConfig.searchCount}</span></div>
+                        <input type="range" min="1" max="30" value={aiConfig.searchCount} onChange={(e) => saveAiConfig({ ...aiConfig, searchCount: parseInt(e.target.value) })} className="w-full h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer" />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {aiConfig.provider === 'openai' && (
+                <div className="space-y-4">
+                  <div className="relative">
+                    <input
+                      type={apiKeyFocused ? "text" : "password"}
+                      onFocus={() => setApiKeyFocused(true)}
+                      onBlur={() => setApiKeyFocused(false)}
+                      value={!apiKeyFocused && aiConfig.openaiApiKey ? "************" : aiConfig.openaiApiKey}
+                      onChange={e => saveAiConfig({ ...aiConfig, openaiApiKey: e.target.value })}
+                      placeholder="OpenAI Key"
+                      className="w-full p-2 pr-24 border rounded-xl"
+                      style={{ backgroundColor: currentTheme.glass, borderColor: currentTheme.line }}
+                    />
+                    <button
+                      onClick={() => handleTestConnection('openai')}
+                      disabled={apiStatus.openai === 'testing'}
+                      className="absolute right-2 top-1.5 px-3 py-1 bg-black/5 hover:bg-black/10 rounded-lg text-[10px] font-bold flex items-center gap-1 transition-colors"
+                    >
+                      {apiStatus.openai === 'testing' ? <Loader2 size={10} className="animate-spin" /> : <div className={`w-2 h-2 rounded-full ${apiStatus.openai === 'success' ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]' : apiStatus.openai === 'error' ? 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)]' : 'bg-gray-400'}`} />}
+                      {t.testConnection}
+                    </button>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <label className="text-xs font-bold">{t.modelLabel}</label>
+                    <button onClick={fetchOpenAIModels} className="text-[10px] text-blue-500 flex gap-1 items-center">{fetchingModels ? <Loader2 className="animate-spin" size={10} /> : <RefreshCw size={10} />}{t.refreshModels}</button>
+                  </div>
+                  <select className="w-full p-2 border rounded-xl" value={aiConfig.openaiModel} onChange={e => saveAiConfig({ ...aiConfig, openaiModel: e.target.value })} style={{ backgroundColor: currentTheme.glass, borderColor: currentTheme.line }}>{openAIModelsList.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}</select>
+                  <div className="p-3 rounded-xl border space-y-3" style={{ borderColor: currentTheme.line }}>
+                    <div className="flex items-center justify-between">
+                      <div><label className="block text-sm font-semibold flex items-center gap-1"><Search size={14} /> {t.searchLabel}</label><p className="text-[10px] opacity-60">OpenAI Responses API Search</p></div>
+                      <button onClick={() => saveAiConfig({ ...aiConfig, enableWebSearch: !aiConfig.enableWebSearch })} className={`w-12 h-7 rounded-full transition-colors relative ${aiConfig.enableWebSearch ? 'bg-blue-600' : 'bg-gray-300'}`}><div className={`absolute top-1 left-1 w-5 h-5 bg-white rounded-full transition-transform ${aiConfig.enableWebSearch ? 'translate-x-5' : ''}`} /></button>
+                    </div>
+                    {aiConfig.enableWebSearch && (
+                      <div className="space-y-2">
+                        <label className="block text-xs font-bold opacity-70">{t.searchDepthLabel}</label>
+                        <div className="grid grid-cols-3 gap-2">
+                          {['low', 'medium', 'high'].map(depth => (
+                            <button key={depth} onClick={() => saveAiConfig({ ...aiConfig, openaiSearchDepth: depth })} className={`py-1.5 rounded-lg text-[10px] font-bold border transition-all ${aiConfig.openaiSearchDepth === depth ? 'bg-blue-500 text-white border-blue-600 shadow-sm' : 'bg-white border-gray-200 hover:bg-gray-50'}`}>{t[`searchDepth${depth.charAt(0).toUpperCase() + depth.slice(1)}`]}</button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {aiConfig.provider === 'local' && (
+                <div className="space-y-3">
+                  <div className="p-3 rounded-xl border bg-blue-50/10 space-y-3" style={{ borderColor: currentTheme.glassBorder }}>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold block opacity-70">Ollama API URL</label>
+                      <input value={aiConfig.localEndpoint} onChange={e => saveAiConfig({ ...aiConfig, localEndpoint: e.target.value })} className="w-full p-2 border rounded-xl font-mono text-xs" placeholder="http://127.0.0.1:11434/api/generate" style={{ backgroundColor: currentTheme.glass, borderColor: currentTheme.line }} />
+                    </div>
+
+                    <div className="pt-2 border-t space-y-2" style={{ borderColor: currentTheme.line }}>
+                      <div className="flex items-center justify-between">
+                        <label className="text-[10px] font-bold opacity-70 flex items-center gap-1"><Zap size={10} /> Internal Proxy Settings</label>
+                        <button onClick={() => setShowProxySettings(!showProxySettings)} className="text-[10px] text-blue-500 hover:underline">{showProxySettings ? 'Hide' : 'Configure'}</button>
+                      </div>
+
+                      {showProxySettings && (
+                        <div className="space-y-3 animate-in fade-in slide-in-from-top-1 duration-200">
+                          <div className="grid grid-cols-2 gap-3">
+                            <div className="space-y-1">
+                              <label className="text-[9px] font-bold opacity-60">Proxy Port</label>
+                              <input
+                                type="number"
+                                value={aiConfig.proxyPort}
+                                onChange={e => {
+                                  const port = parseInt(e.target.value);
+                                  saveAiConfig({ ...aiConfig, proxyPort: port });
+                                  invoke('set_proxy', { remote: aiConfig.proxyRemote, port });
+                                }}
+                                className="w-full p-2 border rounded-lg text-xs"
+                                style={{ backgroundColor: currentTheme.glass, borderColor: currentTheme.line }}
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <label className="text-[9px] font-bold opacity-60">Status</label>
+                              <div className="flex items-center h-8 gap-2 text-[10px] px-2 bg-black/5 rounded-lg border border-dashed border-black/10">
+                                <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+                                <span className="opacity-70">Active on {aiConfig.proxyPort}</span>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-[9px] font-bold opacity-60">Target Remote (Redirect To)</label>
+                            <input
+                              value={aiConfig.proxyRemote}
+                              onChange={e => {
+                                const remote = e.target.value;
+                                saveAiConfig({ ...aiConfig, proxyRemote: remote });
+                                invoke('set_proxy', { remote, port: aiConfig.proxyPort });
+                              }}
+                              className="w-full p-2 border rounded-lg text-xs font-mono"
+                              placeholder="https://api.ollama.ai"
+                              style={{ backgroundColor: currentTheme.glass, borderColor: currentTheme.line }}
+                            />
+                          </div>
+                          <p className="text-[9px] opacity-50 italic leading-tight">By default, requests to 127.0.0.1:{aiConfig.proxyPort} are forwarded to {aiConfig.proxyRemote}. Use this to bypass CORS or connect to remote Ollama nodes.</p>
+                        </div>
+                      )}
                     </div>
                   </div>
-                  <div>
-                    <label className="text-[10px] font-bold block mb-1">{t.localSearchApiKeyLabel}</label>
-                    <div className="relative">
-                      <input type="password" value={aiConfig.localSearchProvider === 'serper' ? (aiConfig.serperApiKey || '') : (aiConfig.tavilyApiKey || '')} onChange={e => saveAiConfig({ ...aiConfig, [aiConfig.localSearchProvider === 'serper' ? 'serperApiKey' : 'tavilyApiKey']: e.target.value })} className="w-full p-2 pr-24 border rounded-xl text-xs" placeholder={`${aiConfig.localSearchProvider === 'serper' ? 'Serper' : 'Tavily'} API Key`} style={{ backgroundColor: currentTheme.glass, borderColor: currentTheme.line }} />
-                      <button onClick={() => handleTestConnection(aiConfig.localSearchProvider)} disabled={apiStatus[aiConfig.localSearchProvider] === 'testing'} className="absolute right-2 top-1.5 px-3 py-1 bg-black/5 hover:bg-black/10 rounded-lg text-[8px] font-bold flex items-center gap-1 transition-colors">
-                        {apiStatus[aiConfig.localSearchProvider] === 'testing' ? <Loader2 size={8} className="animate-spin" /> : <div className={`w-1.5 h-1.5 rounded-full ${apiStatus[aiConfig.localSearchProvider] === 'success' ? 'bg-green-500 shadow-[0_0_6px_rgba(34,197,94,0.4)]' : apiStatus[aiConfig.localSearchProvider] === 'error' ? 'bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.4)]' : 'bg-gray-400'}`} />}
+                  <div className="flex justify-between items-center">
+                    <button onClick={() => setShowOllamaHelp(true)} className="text-[10px] text-blue-500 flex gap-1"><HelpCircle size={10} /> {t.helpBtn}</button>
+                    <div className="flex gap-3 items-center">
+                      <button onClick={() => handleTestConnection('ollama')} disabled={apiStatus.ollama === 'testing'} className="text-[10px] font-bold flex items-center gap-1 transition-colors hover:text-blue-600">
+                        {apiStatus.ollama === 'testing' ? <Loader2 size={10} className="animate-spin" /> : <div className={`w-2 h-2 rounded-full ${apiStatus.ollama === 'success' ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]' : apiStatus.ollama === 'error' ? 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)]' : 'bg-gray-400'}`} />}
                         {t.testConnection}
                       </button>
+                      <button onClick={() => fetchOllamaModels(aiConfig.localEndpoint)} className="text-[10px] text-blue-500 flex gap-1">{fetchingModels ? <Loader2 className="animate-spin" size={10} /> : <RefreshCw size={10} />} {t.refreshBtn}</button>
                     </div>
                   </div>
-                  <div>
-                    <div className="flex justify-between text-[10px] items-center mb-1"><span className="font-bold">{t.searchCountLabel}</span><span className="opacity-60">{aiConfig.searchCount || 5}</span></div>
-                    <input type="range" min="1" max="20" value={aiConfig.searchCount || 5} onChange={(e) => saveAiConfig({ ...aiConfig, searchCount: parseInt(e.target.value) })} className="w-full h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer" />
+                  {localModelsList.length > 0 ? (
+                    <select className="w-full p-2 border rounded-xl" value={aiConfig.localModel} onChange={e => saveAiConfig({ ...aiConfig, localModel: e.target.value })} style={{ backgroundColor: currentTheme.glass, borderColor: currentTheme.line }}>{localModelsList.map(m => <option key={m.name} value={m.name}>{m.name}</option>)}</select>
+                  ) : (
+                    <input className="w-full p-2 border rounded-xl" value={aiConfig.localModel} onChange={e => saveAiConfig({ ...aiConfig, localModel: e.target.value })} placeholder={t.modelNamePlaceholder} style={{ backgroundColor: currentTheme.glass, borderColor: currentTheme.line }} />
+                  )}
+                  <div className="p-3 rounded-xl border space-y-3" style={{ borderColor: currentTheme.line }}>
+                    <div className="flex items-center justify-between">
+                      <div><label className="block text-sm font-semibold flex items-center gap-1"><Search size={14} /> {t.searchLabel}</label><p className="text-[10px] opacity-60">Search-Augmented Generation (SAG)</p></div>
+                      <button onClick={() => saveAiConfig({ ...aiConfig, enableWebSearch: !aiConfig.enableWebSearch })} className={`w-12 h-7 rounded-full transition-colors relative ${aiConfig.enableWebSearch ? 'bg-blue-600' : 'bg-gray-300'}`}><div className={`absolute top-1 left-1 w-5 h-5 bg-white rounded-full transition-transform ${aiConfig.enableWebSearch ? 'translate-x-5' : ''}`} /></button>
+                    </div>
+                    {aiConfig.enableWebSearch && (
+                      <div className="space-y-3 pt-2 border-t" style={{ borderColor: currentTheme.line }}>
+                        <div>
+                          <label className="text-[10px] font-bold block mb-1">{t.localSearchProviderLabel}</label>
+                          <div className="flex p-1 rounded-lg" style={{ backgroundColor: currentTheme.line }}>
+                            <button onClick={() => saveAiConfig({ ...aiConfig, localSearchProvider: 'serper' })} className={`flex-1 py-1 rounded-md text-[10px] ${aiConfig.localSearchProvider === 'serper' ? 'bg-white shadow' : ''}`} style={{ backgroundColor: aiConfig.localSearchProvider === 'serper' ? currentTheme.bg : 'transparent', color: currentTheme.text }}>Serper.dev</button>
+                            <button onClick={() => saveAiConfig({ ...aiConfig, localSearchProvider: 'tavily' })} className={`flex-1 py-1 rounded-md text-[10px] ${aiConfig.localSearchProvider === 'tavily' ? 'bg-white shadow' : ''}`} style={{ backgroundColor: aiConfig.localSearchProvider === 'tavily' ? currentTheme.bg : 'transparent', color: currentTheme.text }}>Tavily</button>
+                          </div>
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-bold block mb-1">{t.localSearchApiKeyLabel}</label>
+                          <div className="relative">
+                            <input type="password" value={aiConfig.localSearchProvider === 'serper' ? (aiConfig.serperApiKey || '') : (aiConfig.tavilyApiKey || '')} onChange={e => saveAiConfig({ ...aiConfig, [aiConfig.localSearchProvider === 'serper' ? 'serperApiKey' : 'tavilyApiKey']: e.target.value })} className="w-full p-2 pr-24 border rounded-xl text-xs" placeholder={`${aiConfig.localSearchProvider === 'serper' ? 'Serper' : 'Tavily'} API Key`} style={{ backgroundColor: currentTheme.glass, borderColor: currentTheme.line }} />
+                            <button onClick={() => handleTestConnection(aiConfig.localSearchProvider)} disabled={apiStatus[aiConfig.localSearchProvider] === 'testing'} className="absolute right-2 top-1.5 px-3 py-1 bg-black/5 hover:bg-black/10 rounded-lg text-[8px] font-bold flex items-center gap-1 transition-colors">
+                              {apiStatus[aiConfig.localSearchProvider] === 'testing' ? <Loader2 size={8} className="animate-spin" /> : <div className={`w-1.5 h-1.5 rounded-full ${apiStatus[aiConfig.localSearchProvider] === 'success' ? 'bg-green-500 shadow-[0_0_6px_rgba(34,197,94,0.4)]' : apiStatus[aiConfig.localSearchProvider] === 'error' ? 'bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.4)]' : 'bg-gray-400'}`} />}
+                              {t.testConnection}
+                            </button>
+                          </div>
+                        </div>
+                        <div>
+                          <div className="flex justify-between text-[10px] items-center mb-1"><span className="font-bold">{t.searchCountLabel}</span><span className="opacity-60">{aiConfig.searchCount || 5}</span></div>
+                          <input type="range" min="1" max="20" value={aiConfig.searchCount || 5} onChange={(e) => saveAiConfig({ ...aiConfig, searchCount: parseInt(e.target.value) })} className="w-full h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer" />
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
             </div>
+            <div className="mt-6 flex justify-end flex-shrink-0">
+              <button onClick={() => setShowSettings(false)} className="px-6 py-2 bg-black text-white rounded-full hover:bg-gray-800 transition-colors">{t.saveBtn}</button>
+            </div>
           </div>
-        )}</div><div className="mt-6 flex justify-end"><button onClick={() => setShowSettings(false)} className="px-6 py-2 bg-black text-white rounded-full">{t.saveBtn}</button></div></div></div>}
-
-
+        </div>
+      )}
       {analysisResult && (
         <div className="fixed inset-0 z-[80] bg-black/30 backdrop-blur-md flex items-center justify-center p-4" onClick={() => !analyzing && setAnalysisResult(null)} onMouseDown={e => e.stopPropagation()} onWheel={e => e.stopPropagation()}>
           <div className="p-6 rounded-3xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col" style={{ backgroundColor: currentTheme.bg, color: currentTheme.text, border: `1px solid ${currentTheme.glassBorder}` }} onClick={e => e.stopPropagation()}>
@@ -1795,7 +2040,9 @@ export default function App() {
                       parts.push(
                         <button
                           key={`${i}-${match.index}`}
-                          onClick={() => window.open(url, '_blank')}
+                          onClick={async () => {
+                            try { await invoke('open_url', { url }); } catch (err) { window.open(url, '_blank'); }
+                          }}
                           className="text-blue-600 hover:text-blue-800 underline decoration-blue-300 underline-offset-2 mx-1 inline-flex items-center gap-0.5 font-medium transition-colors"
                         >
                           {title} <ExternalLink size={12} className="inline opacity-60" />
@@ -1822,28 +2069,15 @@ export default function App() {
         </div>
       )}
 
+
+
       <style>{`
         @keyframes halo-pulse {
             0% { transform: scale(1); opacity: 0.8; }
             100% { transform: scale(2); opacity: 0; }
         }
         .animate-ping-slow { animation: halo-pulse 2s cubic-bezier(0, 0, 0.2, 1) infinite; }
-        
-        .custom-scrollbar::-webkit-scrollbar {
-          width: 8px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-track {
-          background: rgba(0, 0, 0, 0.05);
-          border-radius: 10px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb {
-          background: rgba(0, 0, 0, 0.2);
-          border-radius: 10px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-          background: rgba(0, 0, 0, 0.3);
-        }
       `}</style>
-    </div>
+    </div >
   );
 }
