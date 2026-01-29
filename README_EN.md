@@ -1,4 +1,4 @@
-# Creative MindMap by Brainstorm AI v0.2.0
+# Creative MindMap by Brainstorm AI
 
 > **Set a goal, let AI guide you.**
 

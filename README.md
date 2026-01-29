@@ -1,4 +1,4 @@
-# Creative MindMap by Brainstorm AI (創意發散) v0.2.0
+# Creative MindMap by Brainstorm AI (創意發散)
 
 > **設定目標，讓 AI 成為您的策略顧問。**  
 > Set a goal, let AI guide you.
