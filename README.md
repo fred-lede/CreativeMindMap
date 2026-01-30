@@ -58,7 +58,7 @@ Creative MindMap by Brainstorm AI 是一個互動式的 AI 心智圖工具，旨
     -   **[NEW] 搜尋增強生成 (SAG)**: 即使是本機模型，也能整合 `Serper.dev` 或 `Tavily` API 進行即時網路搜尋。
     -   支援模型：`llama3.1`, `mistral`, `gemma2` 等。
 
-## 🛠️ 安裝與啟動 (v0.2.0 Electron 版)
+## 🛠️ 安裝與啟動 (Electron 版)
 
 ### 先決條件
 -   Node.js (v18 或更高版本)
