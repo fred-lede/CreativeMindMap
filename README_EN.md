@@ -58,7 +58,7 @@ Creative MindMap by Brainstorm AI is an interactive, AI-powered mind mapping too
     -   **[NEW] Search-Augmented Generation (SAG)**: Integrate `Serper.dev` or `Tavily` APIs for real-time web search even with local models.
     -   Supports: `llama3.1`, `mistral`, `gemma2`, etc.
 
-## 🛠️ Installation & Setup (v0.2.0 Electron)
+## 🛠️ Installation & Setup (Electron)
 
 ### Prerequisites
 -   Node.js (v18 or higher)
