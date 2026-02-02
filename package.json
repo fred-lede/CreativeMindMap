@@ -57,16 +57,19 @@
     },
     "win": {
       "target": "nsis",
-      "icon": "public/icon.ico"
+      "icon": "public/icon.ico",
+      "artifactName": "CreativeMindMap-${version}-Windows-Setup.exe"
     },
     "mac": {
       "target": "dmg",
       "icon": "public/icon.icns",
-      "identity": null
+      "identity": null,
+      "artifactName": "CreativeMindMap-${version}-macOS-${arch}.dmg"
     },
     "linux": {
       "target": "AppImage",
-      "icon": "public/icon.png"
+      "icon": "public/icon.png",
+      "artifactName": "CreativeMindMap-${version}-Linux-${arch}.AppImage"
     }
   }
 }
