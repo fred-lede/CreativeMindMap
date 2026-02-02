@@ -3,29 +3,69 @@ name: Build and Release
 on:
   push:
     tags:
-      - 'v*' # 當推送 v1.0.0 這種標籤時觸發
+      - 'v*'  # push v1.0.0 這種 tag 觸發
 
 jobs:
   release:
-    runs-on: ${{ matrix.os }}
-
     strategy:
       matrix:
         os: [windows-latest, macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      VERSION: ${{ github.ref_name }}
 
     steps:
-      - name: Check out git repository
+      # 1️⃣ Checkout repo
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install Node.js
+      # 2️⃣ Setup Node.js
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
 
-      - name: Install Dependencies
+      # 3️⃣ Install dependencies
+      - name: Install dependencies
         run: npm install
 
-      - name: Build & Release
+      # 4️⃣ Build Electron App
+      - name: Build Electron App
         run: npm run electron:build
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # 5️⃣ Debug: list release folder
+      - name: List release folder
+        run: ls -R release
+
+      # 6️⃣ Create GitHub Release
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.ref_name }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # 7️⃣ Upload Release Assets (可執行檔)
+      - name: Upload Executable Assets to Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            release/**/*.exe
+            release/**/*.dmg
+            release/**/*.app
+            release/**/*.AppImage
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # 8️⃣ Upload workflow artifacts (for debugging / internal download)
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-${{ matrix.os }}-${{ env.VERSION }}
+          path: |
+            release/**/*.exe
+            release/**/*.dmg
+            release/**/*.app
+            release/**/*.AppImage

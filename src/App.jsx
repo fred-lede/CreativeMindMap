@@ -5,6 +5,9 @@ import {
   Sidebar as SidebarIcon, Plus, FileText, FolderOpen, MoreVertical, Layout, Check, AlertTriangle, Globe, Search, BrainCircuit, Lock, Circle, Square, MousePointer2, HelpCircle, Focus, LayoutGrid, Maximize, ScrollText, Palette, ExternalLink, Grid3X3
 } from 'lucide-react';
 
+import TitleBar from "./components/TitleBar";
+
+
 // --- 配置與全局樣式 ---
 const THEMES = {
   default: {
@@ -221,6 +224,13 @@ const hexToRgb = (hex) => {
 };
 
 export default function App() {
+  return (
+    <div style={{ height: "100vh" }}>
+      <TitleBar />
+      <div style={{ padding: 20 }}>🚀 CreativeMindMap 主內容</div>
+    </div>
+  );
+  
   // --- 1. 讀取版本號 ---
   const appVersion = import.meta.env.VITE_APP_VERSION;
   const appAuthor = import.meta.env.VITE_APP_AUTHOR; // 👈 新增這行

@@ -1,0 +1,35 @@
+.titlebar {
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px;
+  background: rgba(0, 0, 0, 0.8);
+  color: white;
+  -webkit-app-region: drag; /* 可拖曳 */
+  user-select: none;
+}
+
+.window-controls {
+  display: flex;
+  gap: 8px;
+  -webkit-app-region: no-drag; /* 按鈕不可拖曳 */
+}
+
+button {
+  width: 32px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  color: white;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+button:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+button.close:hover {
+  background: red;
+}
