@@ -2,6 +2,33 @@
 
 "Brainstorm AI" is a powerful mind mapping tool deeply integrated with various AI models, including Google Gemini, OpenAI (ChatGPT), and locally deployed Ollama. It not only provides an intuitive mind mapping interface but also assists your strategic brainstorming, knowledge exploration, and content creation with AI.
 
+<p align="center">
+  <b>CreativeMindMap UI Preview</b>
+</p>
+
+<table align="center">
+  <tr>
+    <td align="center">
+      <img src="CreativeMindMap-1.jpg" width="380"><br>
+      <sub>Main UI</sub>
+    </td>
+    <td align="center">
+      <img src="CreativeMindMap-2.jpg" width="380"><br>
+      <sub>Settings</sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <img src="CreativeMindMap-3.jpg" width="380"><br>
+      <sub>AI Deep Analysis & Path Summary</sub>
+    </td>
+    <td align="center">
+      <img src="CreativeMindMap-4.jpg" width="380"><br>
+      <sub>Connect</sub>
+    </td>
+  </tr>
+</table>
+
 This version is built on the Electron framework as a desktop application. Compared to the Tauri version, the Electron version features a **built-in Smart Proxy** for local Ollama connections, which means:
 
 *   You **DO NOT need to manually set the `OLLAMA_ORIGINS` environment variable**.
