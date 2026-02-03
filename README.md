@@ -1,6 +1,10 @@
-# 💡 Brainstorm AI (Electron 桌面應用程式)
+# 💡 Creative MindMap by Brainstorm AI (Electron 桌面應用程式)
 
-「Brainstorm AI」是一款強大的心智圖工具，深度整合了多種 AI 模型，包括 Google Gemini、OpenAI (ChatGPT) 和本地部署的 Ollama。它不僅提供直觀的心智圖介面，更透過 AI 輔助您的策略發想、知識探索和內容創作。
+[🇹🇼 繁體中文 (Traditional Chinese)](./README.md) | [🇺🇸 English (英文)](./README_EN.md)
+
+---
+
+「Creative MindMap」是一款強大的心智圖工具，深度整合了多種 AI 模型，包括 Google Gemini、OpenAI (ChatGPT) 和本地部署的 Ollama。它不僅提供直觀的心智圖介面，更透過 AI 輔助您的策略發想、知識探索和內容創作。
 
 <p align="center">
   <b>CreativeMindMap UI Preview</b>
