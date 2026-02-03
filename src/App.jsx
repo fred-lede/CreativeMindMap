@@ -5,8 +5,6 @@ import {
   Sidebar as SidebarIcon, Plus, FileText, FolderOpen, MoreVertical, Layout, Check, AlertTriangle, Globe, Search, BrainCircuit, Lock, Circle, Square, MousePointer2, HelpCircle, Focus, LayoutGrid, Maximize, ScrollText, Palette, ExternalLink, Grid3X3
 } from 'lucide-react';
 
-import TitleBar from "./components/TitleBar";
-
 
 // --- 配置與全局樣式 ---
 const THEMES = {
@@ -89,6 +87,8 @@ const UI_TEXT = {
     contextLabel: "背景脈絡", contextPlaceholder: "目的、受眾、限制...",
     searchLabel: "網路搜尋 (Web Search)",
     searchNote: "搜尋最新商業趨勢與事實 (Google)",
+	searchNoteOpenAI: "OpenAI 官方即時連網搜尋",
+    searchNoteLocal: "本地模型搭配外部搜尋 (Serper/Tavily)",
     searchCountLabel: "搜尋結果數量",
     searchDepthLabel: "搜尋深度 (Depth)",
     searchDepthLow: "低 (快速)",
@@ -115,7 +115,7 @@ const UI_TEXT = {
     confirmClearTitle: "清空畫布", confirmClearText: "確定要清空當前畫布嗎？未保存的內容將會遺失。",
     saveBtn: "儲存設定", cancel: "取消", confirm: "確認",
     newProjectBtn: "新專案", historyBtn: "歷史專案", libraryTitle: "專案庫",
-    refreshModels: "重新整理", apiKeyPlaceholder: "API Key...", endpointLabel: "Endpoint URL",
+    refreshModels: "重新整理", apiKeyPlaceholder: "API Key...", endpointLabel: "Ollama API URL (Local or LAN IP)",
     editContextTitle: "編輯策略與背景", strategyLabel: "AI 策略", strategyUpdating: "更新中...", regenerateStrategy: "重新生成策略", updateBtn: "更新",
     inputPlaceholder: "輸入想法...", autoLayout: "自動佈局", centerView: "置中視角", resetZoom: "重置縮放",
     strategyUpdated: "策略已更新", error405: "錯誤 405：請檢查 CORS 設定", errorMixedContent: "混合內容錯誤：無法從 HTTPS 連線到 HTTP 本地端", errorConnection: "連線失敗", errorNoContent: "無回應內容",
@@ -135,6 +135,8 @@ const UI_TEXT = {
     contextLabel: "Context", contextPlaceholder: "Goal, audience...",
     searchLabel: "Web Search",
     searchNote: "Identify key trends and facts (Google)",
+	searchNoteOpenAI: "OpenAI Real-time Web Search",
+    searchNoteLocal: "Local Model + External Search API",
     searchCountLabel: "Search Results Count",
     searchDepthLabel: "Search Depth",
     searchDepthLow: "Low (Fast)",
@@ -161,7 +163,7 @@ const UI_TEXT = {
     confirmClearTitle: "Clear Canvas", confirmClearText: "Are you sure? Unsaved data will be lost.",
     saveBtn: "Save Settings", cancel: "Cancel", confirm: "Confirm",
     newProjectBtn: "New Project", historyBtn: "History", libraryTitle: "Library",
-    refreshModels: "Refresh", apiKeyPlaceholder: "API Key...", endpointLabel: "Endpoint URL",
+    refreshModels: "Refresh", apiKeyPlaceholder: "API Key...", endpointLabel: "Ollama API URL (Local or LAN IP)",
     editContextTitle: "Edit Context & Strategy", strategyLabel: "AI Strategy", strategyUpdating: "Updating...", regenerateStrategy: "Regenerate Strategy", updateBtn: "Update",
     inputPlaceholder: "Type an idea...", autoLayout: "Auto Layout", centerView: "Center View", resetZoom: "Reset Zoom",
     strategyUpdated: "Strategy Updated", error405: "Error 405: Check CORS", errorMixedContent: "Mixed Content Error: Cannot connect to HTTP local from HTTPS", errorConnection: "Connection Failed", errorNoContent: "No Content",
@@ -224,16 +226,10 @@ const hexToRgb = (hex) => {
 };
 
 export default function App() {
-  return (
-    <div style={{ height: "100vh" }}>
-      <TitleBar />
-      <div style={{ padding: 20 }}>🚀 CreativeMindMap 主內容</div>
-    </div>
-  );
-  
+    
   // --- 1. 讀取版本號 ---
   const appVersion = import.meta.env.VITE_APP_VERSION;
-  const appAuthor = import.meta.env.VITE_APP_AUTHOR; // 👈 新增這行
+  const appAuthor = import.meta.env.VITE_APP_AUTHOR;
 
   const [lang, setLang] = useState('zh-TW');
   const t = UI_TEXT[lang];
@@ -273,27 +269,35 @@ export default function App() {
     tavily: 'idle',
     ollama: 'idle'
   });
-
+  
   // NEW: State for Proxy Settings
   const [showProxySettings, setShowProxySettings] = useState(false);
 
+  // 1. 請確保這行常數放在 useState 之前
+  const INTERNAL_PROXY_BASE = 'http://127.0.0.1:11435'; 
+
+  // 2. 修改 aiConfig 狀態
   const [aiConfig, setAiConfig] = useState({
     provider: 'gemini', apiKey: '', geminiModel: 'gemini-2.0-flash',
     openaiApiKey: '', openaiModel: 'gpt-4o',
-    localEndpoint: 'http://127.0.0.1:11434/api/generate', localModel: 'llama3',
-    proxyPort: 11435,
-    proxyRemote: 'https://api.ollama.ai',
+
+    // 👇 設定為標準的 Ollama Port (11434)
+    // 程式碼中的 getEffectiveEndpoint 會自動把它轉給 11435，使用者不用操心
+    localEndpoint: 'http://127.0.0.1:11434/api/generate', 
+    
+    localModel: 'llama3',
+
     workspaceName: 'Default', enableWebSearch: false,
     openaiSearchDepth: 'low',
-    localSearchProvider: 'serper', // serper, tavily
+    localSearchProvider: 'serper', 
     searchCount: 5,
-    searchLanguage: 'en', // 'en' (Prioritize English) or 'auto' (Follow Interface)
+    searchLanguage: 'en', 
     serperApiKey: '',
     tavilyApiKey: '',
-    branchCount: 8, // Default 8 branches
+    branchCount: 8, 
     defaultShape: 'circle',
     theme: 'default',
-    showGrid: true // NEW: Grid Visibility Toggle
+    showGrid: true 
   });
 
   const currentTheme = THEMES[aiConfig.theme] || THEMES.default;
@@ -351,6 +355,13 @@ export default function App() {
           cfg.localSearchProvider = 'serper';
           migrated = true;
         }
+        
+        // Ensure proxy fields
+        if (cfg.enableProxy === undefined) {
+             cfg.enableProxy = false;
+             cfg.proxyUrl = 'http://127.0.0.1:8080/api/generate';
+             migrated = true;
+        }
 
         if (migrated) {
           setAiConfig(prev => {
@@ -375,6 +386,40 @@ export default function App() {
     setAiConfig(newConfig);
     localStorage.setItem('mindmap_ai_config', JSON.stringify(newConfig));
   };
+  
+  // --- 新增：自動路由轉換函式 (Smart Routing) ---
+  const getEffectiveEndpoint = (userUrl) => {
+    if (!userUrl) return userUrl;
+
+    try {
+      // 1. 解析使用者輸入的網址
+      const urlObj = new URL(userUrl);
+      const host = urlObj.hostname; // e.g., "192.168.1.50" or "localhost"
+      const port = urlObj.port || '80';
+      const path = urlObj.pathname + urlObj.search; // e.g., "/api/generate"
+
+      // 2. 判斷是否為本機 (Localhost)
+      const isLocal = host === 'localhost' || host === '127.0.0.1';
+
+      // 3. 路由邏輯
+      if (isLocal) {
+        // 情境 A: 使用者設定本機 (localhost:11434)
+        // 我們直接指到 Proxy Server (11435)，並保留原始路徑
+        // 因為 main.js 預設就是轉發給 localhost:11434
+        return `${INTERNAL_PROXY_BASE}${path}`;
+      } else {
+        // 情境 B: 使用者設定區網 IP (192.168.x.x) 或其他網址
+        // 我們使用 /proxy/ 語法，告訴 main.js 要轉發去哪裡
+        // 格式: http://127.0.0.1:11435/proxy/192.168.1.50:11434/api/generate
+        const targetAuthority = `${host}:${port}`;
+        return `${INTERNAL_PROXY_BASE}/proxy/${targetAuthority}${path}`;
+      }
+    } catch (e) {
+      console.warn("URL Parse Error:", e);
+      // 如果網址格式錯誤，就回傳原值，讓 fetch 自己去報錯
+      return userUrl;
+    }
+  };
 
   const toggleLanguage = () => {
     const newLang = lang === 'zh-TW' ? 'en' : 'zh-TW';
@@ -387,6 +432,7 @@ export default function App() {
     setTimeout(() => setToast(null), 5000);
   };
 
+  // ... (View handlers omitted for brevity, logic unchanged) ...
   const handleCenterView = () => {
     if (nodes.length === 0) { handleResetZoom(); return; }
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
@@ -445,7 +491,8 @@ export default function App() {
     showToast(t.strategyUpdated || "Layout updated", "success");
     setTimeout(handleCenterView, 100);
   };
-
+  
+  // ... (State management handlers omitted for brevity) ...
   const snapshot = useCallback(() => {
     setUndoStack(prev => [...prev, { nodes: JSON.parse(JSON.stringify(nodes)), edges: JSON.parse(JSON.stringify(edges)), contextDesc, strategyContext }]);
     setRedoStack([]);
@@ -508,16 +555,14 @@ export default function App() {
       setHistory(project.data.history || []); setCurrentProjectId(project.id); setIsSidebarOpen(false);
     } catch (e) { showToast("Load failed", "error"); }
   };
-
-  // 修改後的刪除請求函式
+  
+  // ... (Project management handlers) ...
   const requestDeleteProject = (e, projectId) => {
     e.stopPropagation();
-    // 不再使用 window.confirm
     setProjectToDeleteId(projectId);
     setShowDeleteProjectConfirm(true);
   };
 
-  // 修改後的執行刪除函式
   const executeDeleteProject = () => {
     if (!projectToDeleteId) return;
     localStorage.removeItem(`mindmap_proj_${projectToDeleteId}`);
@@ -562,15 +607,25 @@ export default function App() {
     window.addEventListener('keydown', hk); return () => window.removeEventListener('keydown', hk);
   }, [deleteSelected, handleUndo, handleRedo]);
 
+  // --- API Fetches ---
   const fetchOllamaModels = async (endpointUrl) => {
     setFetchingModels(true); setFetchModelError(null);
     try {
-      const baseUrl = endpointUrl.replace(/\/api\/generate\/?$/, ''); const response = await fetch(`${baseUrl}/api/tags`);
+      // Determine effective URL based on proxy settings
+      let baseUrl = endpointUrl.replace(/\/api\/generate\/?$/, ''); 
+      let targetUrl = `${baseUrl}/api/tags`;
+      
+      if (aiConfig.enableProxy) {
+          targetUrl = getEffectiveEndpoint(targetUrl);
+      }
+
+      const response = await fetch(targetUrl);
       if (response.status === 405) throw new Error(t.error405); if (!response.ok) throw new Error('Connection failed');
       const data = await response.json();
       if (data.models) { setLocalModelsList(data.models); if (data.models.length > 0) saveAiConfig({ ...aiConfig, localModel: data.models[0].name }); showToast("Ollama list updated", "success"); }
     } catch (err) { setFetchModelError(err.message.includes("Failed to fetch") ? t.errorMixedContent : err.message); showToast(err.message, "error"); setLocalModelsList([]); } finally { setFetchingModels(false); }
   };
+  
   const fetchGeminiModels = async () => {
     if (!aiConfig.apiKey) return; setFetchingModels(true); setFetchModelError(null);
     try {
@@ -594,21 +649,18 @@ export default function App() {
     if (!aiConfig.serperApiKey) throw new Error("Please enter Serper.dev API Key");
     const cleanQuery = query.replace(/\s+/g, ' ').trim().substring(0, 200);
 
-    // Language logic
     let gl = 'us';
     let hl = 'en';
 
     if (aiConfig.searchLanguage === 'auto') {
-      // Follow interface language
       if (lang === 'zh-TW') {
-        gl = 'tw';  // or 'cn' depending on preference, usually 'tw' for Traditional
+        gl = 'tw';
         hl = 'zh-tw';
       } else {
         gl = 'us';
         hl = 'en';
       }
     } else {
-      // Prioritize English (default)
       gl = 'us';
       hl = 'en';
     }
@@ -639,13 +691,10 @@ export default function App() {
     if (!aiConfig.tavilyApiKey) throw new Error("Please enter Tavily API Key");
     const cleanQuery = query.replace(/\s+/g, ' ').trim().substring(0, 200);
 
-    // Language logic for Tavily
     let searchLanguage = 'en';
     if (aiConfig.searchLanguage === 'auto') {
-      // Follow interface language
       searchLanguage = lang === 'zh-TW' ? 'zh' : 'en';
     } else {
-      // Prioritize English (default)
       searchLanguage = 'en';
     }
 
@@ -705,7 +754,14 @@ export default function App() {
         if (!res.ok) throw new Error(res.statusText);
       } else if (type === 'ollama') {
         let baseUrl = aiConfig.localEndpoint.replace(/\/api\/generate\/?$/, '').replace('localhost', '127.0.0.1');
-        const res = await fetch(`${baseUrl}/api/tags`);
+        let targetUrl = `${baseUrl}/api/tags`;
+        
+        // Use proxy if enabled
+        if (aiConfig.enableProxy) {
+           targetUrl = getEffectiveEndpoint(targetUrl);
+        }
+
+        const res = await fetch(targetUrl);
         if (!res.ok) throw new Error('Connection failed');
       }
       setApiStatus(prev => ({ ...prev, [type]: 'success' }));
@@ -716,14 +772,13 @@ export default function App() {
       showToast(`${t.testError}: ${err.message}`, "error");
     }
   };
+  
   const callAiApi = async (promptText, forceJson = true, retryCount = 0, skipSearch = false) => {
     let resultText = "";
     const now = new Date();
     const timeStr = `[Current Local Time: ${now.toLocaleString('zh-TW')} (${Intl.DateTimeFormat().resolvedOptions().timeZone})]`;
-    // 改為只在開頭注入時間，避免過多重複觸發模型的安全過濾 (Safety Filter)
     const enhancedPrompt = `${timeStr}\n\n${promptText}`;
 
-    // 清除之前的搜尋來源
     if (!skipSearch) {
       setSearchSources([]);
     }
@@ -733,7 +788,6 @@ export default function App() {
         let model = aiConfig.geminiModel || 'models/gemini-1.5-flash';
         if (!model.startsWith('models/')) model = `models/${model}`;
 
-        // 核心規則：開啟搜尋時絕對不要開啟 responseMimeType: "application/json"
         const isSearching = aiConfig.enableWebSearch && !skipSearch;
         const useJsonMode = forceJson && !isSearching;
 
@@ -741,7 +795,6 @@ export default function App() {
         let currentSearchSources = [];
 
         if (isSearching) {
-          // 使用外部搜尋以支持語言設定
           try {
             const searchQuery = promptText.match(/"([^"]+)"/i)?.[1] || promptText.substring(0, 150);
             const results = aiConfig.localSearchProvider === 'serper'
@@ -820,7 +873,6 @@ Please provide a comprehensive response based on these search results. Include c
           throw new Error("Gemini returned an empty response. This may be due to regional search restrictions or safety triggers.");
         }
 
-        // 如果使用外部搜尋，優先使用外部搜尋結果
         let sources = [];
         if (currentSearchSources.length > 0) {
           sources = currentSearchSources.map(source => ({
@@ -830,7 +882,6 @@ Please provide a comprehensive response based on these search results. Include c
             }
           }));
         }
-        // 否則使用 Gemini 內建搜尋的來源
         else {
           const groundingMetadata = candidate?.groundingMetadata;
           if (groundingMetadata) {
@@ -1005,9 +1056,14 @@ Please provide a comprehensive response based on these search results. Include c
         }
 
       } else if (aiConfig.provider === 'local') {
+        // --- Determine Endpoint (Proxy logic) ---
         let endpoint = aiConfig.localEndpoint;
+        if (aiConfig.enableProxy) {
+            endpoint = getEffectiveEndpoint(endpoint);
+        }
+
         let finalPrompt = enhancedPrompt;
-        let currentSearchSources = []; // Fix: Local variable to hold current search results
+        let currentSearchSources = []; 
 
         if (aiConfig.enableWebSearch) {
           let searchResults = [];
@@ -1029,7 +1085,7 @@ Please provide a comprehensive response based on these search results. Include c
                 web: { uri: r.link, title: r.title }
               }));
               setSearchSources(sources);
-              currentSearchSources = sources; // Update local variable
+              currentSearchSources = sources; 
             }
           } catch (err) {
             console.warn("Local search failed:", err);
@@ -1053,9 +1109,7 @@ Please provide a comprehensive response based on these search results. Include c
         const d = await res.json();
         resultText = d.response || d.choices?.[0]?.message?.content;
 
-        // Fix: Use currentSearchSources instead of state searchSources
         if (aiConfig.enableWebSearch && currentSearchSources.length > 0 && !forceJson) {
-          //resultText += "\n\n---\n### 🔍" + t.referenceBy + "(OpenAI Search)\n";
 		  resultText += `\n\n---\n### 🔍${t.referenceBy} (${aiConfig.localSearchProvider === 'serper' ? 'Serper.dev' : 'Tavily'} Search) ###\n`;
           let idx = 1;
           currentSearchSources.forEach(s => {
@@ -1073,7 +1127,8 @@ Please provide a comprehensive response based on these search results. Include c
     if (!resultText) throw new Error(t.errorNoContent);
     return resultText;
   };
-
+  
+  // ... (Other handlers unchanged) ...
   const handleRegenerateStrategy = async () => {
     if (!contextDesc.trim()) return;
     const rootNode = nodes.find(n => n.isRoot); const topic = rootNode ? (rootNode.zh || rootNode.text) : "Brainstorming";
@@ -1111,12 +1166,10 @@ Please provide a comprehensive response based on these search results. Include c
   const fetchAssociations = async (sourceNode) => {
     snapshot(); setLoading(true); setLoadingNodeId(sourceNode.id);
     try {
-      // 1. Trace Ancestors
       let pathTrace = [sourceNode.zh || sourceNode.en || sourceNode.text];
       let currentId = sourceNode.id;
       let depth = 0;
 
-      // Collection of words to strictly avoid (Ancestors + Existing nodes in this branch ideally, but global is safer to avoid repetition)
       const existingTexts = new Set(nodes.map(n => [n.text, n.zh, n.en]).flat().filter(Boolean).map(s => s.toLowerCase()));
 
       while (depth < 10) {
@@ -1133,8 +1186,6 @@ Please provide a comprehensive response based on these search results. Include c
       const rootNode = nodes.find(n => n.isRoot);
       const coreTopic = rootNode ? (rootNode.zh || rootNode.text) : "Core Topic";
 
-      // 2. Prepare Prompt
-      // Configure branching settings: user defined count vs request count (3x for deduplication)
       const branchCount = aiConfig.branchCount || 8;
       const requestCount = branchCount * 3;
 
@@ -1181,26 +1232,21 @@ Please provide a comprehensive response based on these search results. Include c
       const resultText = await callAiApi(promptText, true);
       const parsed = JSON.parse(resultText.replace(/```json/g, '').replace(/```/g, '').trim());
 
-      // FIX: Only update translations for non-root nodes. Root node stays as user input.
       const updatedNodes = nodes.map(n => {
-        // ALLOW root node to get translation updates, but TEXT stays user input via other logic
         if (n.id === sourceNode.id) {
           return { ...n, zh: parsed.original.zh || n.zh, en: parsed.original.en || n.en };
         }
         return n;
       });
 
-      // 3. Post-processing: Filter Duplicates & Slice Top N
       let validItems = parsed.items.filter(item => {
         const zh = item.zh?.toLowerCase();
         const en = item.en?.toLowerCase();
-        // Filter if EITHER Chinese or English text already exists in the graph
         if (zh && existingTexts.has(zh)) return false;
         if (en && existingTexts.has(en)) return false;
         return true;
       });
 
-      // Take user defined branch count
       const items = validItems.slice(0, branchCount);
 
       const newNodes = [], newEdges = [];
@@ -1220,7 +1266,6 @@ Please provide a comprehensive response based on these search results. Include c
         const newNodeId = generateId();
         let nodeColor = sourceNode.isRoot ? BRANCH_PALETTE[index % BRANCH_PALETTE.length] : (sourceNode.color || currentTheme.accent);
 
-        // FIX: Force rank to be sequential based on the final filtered list (1 to 8)
         const displayRank = index + 1;
 
         newNodes.push({ id: newNodeId, text: item.zh, zh: item.zh, en: item.en, x: sourceNode.x + Math.cos(finalAngle) * radius, y: sourceNode.y + Math.sin(finalAngle) * radius, selected: false, isRoot: false, color: nodeColor, shape: aiConfig.defaultShape || 'circle', rank: displayRank });
@@ -1266,7 +1311,6 @@ Please provide a comprehensive response based on these search results. Include c
     try {
       const searchInst = aiConfig.provider === 'gemini' && aiConfig.enableWebSearch ? `Perform up to ${aiConfig.searchCount || 5} web searches to identify key trends, facts, and highly relevant data points for "${inputValue}" within its context.` : "";
 
-      // 1. Create Root Node Immediately (FIX: Never let AI replace this)
       const rootId = generateId();
       const initialText = inputValue;
 
@@ -1274,15 +1318,14 @@ Please provide a comprehensive response based on these search results. Include c
       setNodes([{
         id: rootId,
         text: initialText,
-        zh: initialText, // Always keep original input as master
-        en: initialText, // Initial fallback
+        zh: initialText, 
+        en: initialText, 
         x: 0, y: 0, selected: false, isRoot: true, color: currentTheme.accent, shape: aiConfig.defaultShape
       }]);
       setInputValue("");
       setViewTransform({ x: window.innerWidth / 2, y: window.innerHeight / 2, scale: 1 });
       setTimeout(saveCurrentProject, 100);
 
-      // 2. Background Analysis (Strategy Only, Translation update only for secondary props)
       showToast(t.analyzingStrategy, "info");
 
       const now = new Date();
@@ -1308,7 +1351,6 @@ Please provide a comprehensive response based on these search results. Include c
 
       setStrategyContext(parsed.strategy);
 
-      // RESTORED: Update translations so subtitle appears, but keep text as user input
       setNodes(prev => prev.map(n => {
         if (n.id === rootId) {
           return { ...n, zh: parsed.zh || n.text, en: parsed.en || n.text };
@@ -1321,26 +1363,10 @@ Please provide a comprehensive response based on these search results. Include c
     } catch (error) { showToast(error.message, 'error'); } finally { setIsInitializing(false); }
   };
 
-  const handleNodeDoubleClick = (e, node) => {
-    e.stopPropagation();
-    e.preventDefault();
-
-    // 雙擊時，立即清除單擊的計時器，防止觸發發想
-    if (clickTimeoutRef.current) {
-      clearTimeout(clickTimeoutRef.current);
-      clickTimeoutRef.current = null;
-    }
-
-    setEditingNodeId(node.id);
-    setEditValue(lang === 'zh-TW' ? (node.zh || node.text) : (node.en || node.text));
-  };
-
-  // NEW: Helper to refresh root translation after edit
   const refreshRootTranslation = async (newText) => {
     try {
-      showToast(t.translationUpdating, "info"); // Visual feedback
+      showToast(t.translationUpdating, "info"); 
 
-      // Enhanced prompt to ensure distinct translations
       const res = await callAiApi(`
             Task: Translate the core topic "${newText}" into Traditional Chinese (zh) and English (en).
             - If input is Chinese, 'en' MUST be the English translation. 'zh' remains same.
@@ -1372,8 +1398,6 @@ Please provide a comprehensive response based on these search results. Include c
       setNodes(prev => prev.map(n => n.id === editingNodeId ? {
         ...n,
         text: editValue,
-        // If root, temporarily reset translations to prevent mismatch
-        // They will be updated by refreshRootTranslation shortly
         zh: isRoot ? editValue : (lang === 'zh-TW' ? editValue : n.zh),
         en: isRoot ? editValue : (lang === 'en' ? editValue : n.en)
       } : n));
@@ -1398,7 +1422,7 @@ Please provide a comprehensive response based on these search results. Include c
     setInputValue("");
   };
 
-  // --- 畫布操作 ---
+  // --- Canvas Handlers ---
   const handleCanvasMouseDown = (e) => {
     if (e.button !== 0) return;
     if (e.target.closest('.node-element') || e.target.closest('button') || e.target.closest('input') || e.target.closest('textarea') || e.target.closest('select')) return;
@@ -1426,23 +1450,25 @@ Please provide a comprehensive response based on these search results. Include c
     e.stopPropagation();
     if (isNodeMovedRef.current || editingNodeId === node.id) return;
 
-    // 清除可能存在的舊計時器
     if (clickTimeoutRef.current) clearTimeout(clickTimeoutRef.current);
 
-    // 設定延遲，等待是否有雙擊發生
     clickTimeoutRef.current = setTimeout(() => {
       if (!loading && !analyzing) fetchAssociations(node);
       clickTimeoutRef.current = null;
-    }, 250); // 250ms 延遲
+    }, 250);
   };
-
+  const handleNodeDoubleClick = (e, node) => {
+    e.stopPropagation();
+    e.preventDefault();
+    if (clickTimeoutRef.current) {
+      clearTimeout(clickTimeoutRef.current);
+      clickTimeoutRef.current = null;
+    }
+    setEditingNodeId(node.id);
+    setEditValue(lang === 'zh-TW' ? (node.zh || node.text) : (node.en || node.text));
+  };
   const handleNodeRightClick = (e, node) => { e.preventDefault(); e.stopPropagation(); setNodes(p => p.map(n => n.id === node.id ? { ...n, selected: !n.selected } : n)); };
 
-  // --- 快捷鍵 (整合) ---
-  useEffect(() => {
-    const hk = (e) => { if (['INPUT', 'TEXTAREA'].includes(e.target.tagName)) return; if (e.key === 'Delete' || e.key === 'Backspace') deleteSelected(); if ((e.metaKey || e.ctrlKey) && e.key === 'z' && !e.shiftKey) { e.preventDefault(); handleUndo(); } if ((e.metaKey || e.ctrlKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) { e.preventDefault(); handleRedo(); } };
-    window.addEventListener('keydown', hk); return () => window.removeEventListener('keydown', hk);
-  }, [deleteSelected, handleUndo, handleRedo]);
 
   const getNodeShapeStyle = (shape, isRoot) => {
     const base = "absolute flex flex-col items-center justify-center text-center transition-all duration-300 group cursor-grab active:cursor-grabbing";
@@ -1453,7 +1479,6 @@ Please provide a comprehensive response based on these search results. Include c
     return { className: base, style };
   };
 
-  // Helper logic to show controls if history exists OR nodes exist
   const showControls = nodes.length > 0 || undoStack.length > 0 || redoStack.length > 0;
 
   return (
@@ -1586,16 +1611,11 @@ Please provide a comprehensive response based on these search results. Include c
         {nodes.map(node => {
           const rgb = hexToRgb(node.color || currentTheme.accent);
 
-          // --- Unified Render Logic (Fix: Allow Root Node to swap languages) ---
           const isZh = lang === 'zh-TW';
-
-          // Determine primary and secondary text based on current language
-          // Fallback to node.text (User Input) if specific language field is missing
           const primaryContent = isZh ? (node.zh || node.text) : (node.en || node.text);
           const secondaryContent = isZh ? (node.en || node.text) : (node.zh || node.text);
 
           const mainText = primaryContent;
-          // Only show subtitle if it differs from main title to avoid duplication
           const subText = secondaryContent !== mainText ? secondaryContent : "";
 
           const { className: shapeClass, style: shapeStyle } = getNodeShapeStyle(node.shape || aiConfig.defaultShape || 'circle', node.isRoot || node.selected);
@@ -1621,7 +1641,6 @@ Please provide a comprehensive response based on these search results. Include c
                 ...shapeStyle
               }}
             >
-              {/* NEW: Independent CSS-driven Halo Animation Layer (The Pulse) */}
               {isNodeLoading && (
                 <div className="absolute inset-0 rounded-[inherit] pointer-events-none -z-10 animate-ping-slow"
                   style={{
@@ -1748,9 +1767,7 @@ Please provide a comprehensive response based on these search results. Include c
 
       {showContextEditor && <div className="fixed inset-0 z-[80] bg-black/30 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setShowContextEditor(false)} onMouseDown={e => e.stopPropagation()} onWheel={e => e.stopPropagation()}><div className="p-6 rounded-2xl shadow-xl max-w-md w-full" style={{ backgroundColor: currentTheme.bg, color: currentTheme.text, border: `1px solid ${currentTheme.glassBorder}` }} onClick={e => e.stopPropagation()}><h3 className="text-lg font-bold mb-4 flex items-center gap-2"><Target size={20} className="text-blue-500" />{t.editContextTitle}</h3><div className="space-y-4"><div><label className="block text-sm font-semibold mb-1">{t.contextLabel}</label><textarea className="w-full p-3 border rounded-xl h-24 text-sm" value={contextDesc} onChange={e => setContextDesc(e.target.value)} placeholder={t.contextPlaceholder} style={{ backgroundColor: currentTheme.glass, color: currentTheme.text, borderColor: currentTheme.line }} /></div><div><label className="block text-sm font-semibold mb-1 flex justify-between">{t.strategyLabel}<button onClick={handleRegenerateStrategy} disabled={isRegeneratingStrategy || !contextDesc.trim()} className="text-xs text-blue-600 flex items-center gap-1">{isRegeneratingStrategy ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}{isRegeneratingStrategy ? t.strategyUpdating : t.regenerateStrategy}</button></label><textarea className="w-full p-3 border rounded-xl h-24 text-sm bg-yellow-50" value={strategyContext} onChange={e => setStrategyContext(e.target.value)} placeholder="AI Strategy..." style={{ backgroundColor: currentTheme.id === 'tech' ? '#1e293b' : '#fefce8', color: currentTheme.text, borderColor: currentTheme.line }} /></div></div><div className="flex justify-end gap-2 mt-6"><button onClick={() => setShowContextEditor(false)} className="px-4 py-2 rounded-lg opacity-70 hover:opacity-100" style={{ backgroundColor: currentTheme.line }}>{t.cancel}</button><button onClick={() => { setShowContextEditor(false); saveCurrentProject() }} className="px-4 py-2 bg-black text-white rounded-lg hover:bg-gray-800">{t.updateBtn}</button></div></div></div>}
 
-      {nodes.length === 0 && <div className="fixed inset-0 z-[55] flex items-center justify-center p-4 bg-white/50 backdrop-blur-sm" onMouseDown={e => e.stopPropagation()} onWheel={e => e.stopPropagation()}><div className="border shadow-2xl rounded-3xl p-8 max-w-lg w-full" style={{ backgroundColor: currentTheme.bg, color: currentTheme.text, borderColor: currentTheme.glassBorder }} onClick={e => e.stopPropagation()}><h2 className="text-2xl font-bold mb-2 flex items-center gap-2"><Lightbulb className="text-yellow-500 fill-yellow-500" />{t.title}</h2><p className="text-sm opacity-60 mb-6">{t.subtitle}</p><form onSubmit={handleInitialSetup} className="space-y-4"><div><label className="block text-sm font-bold mb-1">{t.keywordLabel}</label><input className="w-full p-4 border rounded-xl text-lg font-bold outline-none" value={inputValue} onChange={e => setInputValue(e.target.value)} placeholder={t.keywordPlaceholder} style={{ backgroundColor: currentTheme.glass, borderColor: currentTheme.line }} /></div><div><label className="block text-sm font-bold mb-1">{t.contextLabel}</label><textarea className="w-full p-4 border rounded-xl h-24 resize-none text-sm outline-none" value={contextDesc} onChange={e => setContextDesc(e.target.value)} placeholder={t.contextPlaceholder} style={{ backgroundColor: currentTheme.glass, borderColor: currentTheme.line }} /></div><div className="flex items-center gap-3 p-3 rounded-xl border" style={{ borderColor: currentTheme.line }}>{aiConfig.provider === 'gemini' ? (<><button type="button" onClick={() => setAiConfig(p => ({ ...p, enableWebSearch: !p.enableWebSearch }))} className={`w-10 h-6 rounded-full relative transition ${aiConfig.enableWebSearch ? 'bg-blue-500' : 'bg-gray-300'}`}><div className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition ${aiConfig.enableWebSearch ? 'translate-x-4' : ''}`} /></button><div className="flex-1"><label className="block text-sm font-bold flex gap-1"><Search size={14} />{t.searchLabel}</label><p className="text-[10px] opacity-60">{t.searchNote}</p></div></>) : (<div className="flex gap-2 opacity-50"><Lock size={16} /><span className="text-sm">{t.searchNoteDisabled}</span></div>)}</div><button type="submit" disabled={!inputValue.trim() || isInitializing} className="w-full py-4 bg-black text-white rounded-xl font-bold flex justify-center gap-2 hover:bg-gray-800 transition-colors">{isInitializing ? <Loader2 className="animate-spin" /> : null}{isInitializing ? (aiConfig.enableWebSearch ? t.analyzingStrategyWithSearch : t.analyzingStrategy) : t.startBtn}</button><div className="flex justify-center gap-4 text-xs mt-4 opacity-60"><button type="button" onClick={() => fileInputRef.current?.click()} className="flex gap-1 hover:text-black"><Upload size={12} />{t.importBtn}</button><button type="button" onClick={() => setIsSidebarOpen(true)} className="flex gap-1 hover:text-black"><FolderOpen size={12} />{t.historyBtn}</button></div></form></div></div>}
-
-
+      {nodes.length === 0 && <div className="fixed inset-0 z-[55] flex items-center justify-center p-4 bg-white/50 backdrop-blur-sm" onMouseDown={e => e.stopPropagation()} onWheel={e => e.stopPropagation()}><div className="border shadow-2xl rounded-3xl p-8 max-w-lg w-full" style={{ backgroundColor: currentTheme.bg, color: currentTheme.text, borderColor: currentTheme.glassBorder }} onClick={e => e.stopPropagation()}><h2 className="text-2xl font-bold mb-2 flex items-center gap-2"><Lightbulb className="text-yellow-500 fill-yellow-500" />{t.title}</h2><p className="text-sm opacity-60 mb-6">{t.subtitle}</p><form onSubmit={handleInitialSetup} className="space-y-4"><div><label className="block text-sm font-bold mb-1">{t.keywordLabel}</label><input className="w-full p-4 border rounded-xl text-lg font-bold outline-none" value={inputValue} onChange={e => setInputValue(e.target.value)} placeholder={t.keywordPlaceholder} style={{ backgroundColor: currentTheme.glass, borderColor: currentTheme.line }} /></div><div><label className="block text-sm font-bold mb-1">{t.contextLabel}</label><textarea className="w-full p-4 border rounded-xl h-24 resize-none text-sm outline-none" value={contextDesc} onChange={e => setContextDesc(e.target.value)} placeholder={t.contextPlaceholder} style={{ backgroundColor: currentTheme.glass, borderColor: currentTheme.line }} /></div><div className="flex items-center gap-3 p-3 rounded-xl border" style={{ borderColor: currentTheme.line }}>{['gemini', 'openai', 'local'].includes(aiConfig.provider) ? (<><button type="button" onClick={() => setAiConfig(p => ({ ...p, enableWebSearch: !p.enableWebSearch }))} className={`w-10 h-6 rounded-full relative transition ${aiConfig.enableWebSearch ? 'bg-blue-500' : 'bg-gray-300'}`}><div className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition ${aiConfig.enableWebSearch ? 'translate-x-4' : ''}`} /></button><div className="flex-1"><label className="block text-sm font-bold flex gap-1"><Search size={14} />{t.searchLabel}</label><p className="text-[10px] opacity-60">{aiConfig.provider === 'gemini' && t.searchNote}{aiConfig.provider === 'openai' && t.searchNoteOpenAI}{aiConfig.provider === 'local' && t.searchNoteLocal}</p></div></>) : (<div className="flex gap-2 opacity-50"><Lock size={16} /><span className="text-sm">{t.searchNoteDisabled}</span></div>)}</div><button type="submit" disabled={!inputValue.trim() || isInitializing} className="w-full py-4 bg-black text-white rounded-xl font-bold flex justify-center gap-2 hover:bg-gray-800 transition-colors">{isInitializing ? <Loader2 className="animate-spin" /> : null}{isInitializing ? (aiConfig.enableWebSearch ? t.analyzingStrategyWithSearch : t.analyzingStrategy) : t.startBtn}</button><div className="flex justify-center gap-4 text-xs mt-4 opacity-60"><button type="button" onClick={() => fileInputRef.current?.click()} className="flex gap-1 hover:text-black"><Upload size={12} />{t.importBtn}</button><button type="button" onClick={() => setIsSidebarOpen(true)} className="flex gap-1 hover:text-black"><FolderOpen size={12} />{t.historyBtn}</button></div></form></div></div>}
 
 
       {analysisResult && (
@@ -2022,7 +2039,9 @@ Please provide a comprehensive response based on these search results. Include c
                       <input
                         value={aiConfig.localEndpoint}
                         onChange={e => saveAiConfig({ ...aiConfig, localEndpoint: e.target.value })}
-                        className="w-full p-2 pr-24 border rounded-xl text-xs"
+                        className="w-full p-2 pr-24 border rounded-xl text-xs font-mono"
+						// 提示使用者支援區網
+                        placeholder="http://127.0.0.1:11434/api/generate"
                         style={{ backgroundColor: currentTheme.glass, borderColor: currentTheme.line }}
                       />
                       <button
@@ -2034,10 +2053,17 @@ Please provide a comprehensive response based on these search results. Include c
                         {t.testConnection}
                       </button>
                     </div>
-                    <div className="flex justify-between items-center">
-                      <button onClick={() => setShowOllamaHelp(true)} className="text-[10px] text-blue-500 flex gap-1"><HelpCircle size={10} /> {t.helpBtn}</button>
-                      <button onClick={() => fetchOllamaModels(aiConfig.localEndpoint)} className="text-[10px] text-blue-500 flex gap-1">{fetchingModels ? <Loader2 className="animate-spin" size={10} /> : <RefreshCw size={10} />} {t.refreshBtn}</button>
-                    </div>
+                    
+                    {/* ------------------------------------------- */}
+
+                   <div className="flex justify-between items-center text-[10px] opacity-60">
+						<span className="flex items-center gap-1"><Info size={10}/> Supports LAN connections automatically.</span>
+						
+						<div className="flex gap-2">
+						   <button onClick={() => setShowOllamaHelp(true)} className="text-blue-500 flex gap-1 items-center hover:underline"><HelpCircle size={10} /> {t.helpBtn}</button>
+						   <button onClick={() => fetchOllamaModels(aiConfig.localEndpoint)} className="text-blue-500 flex gap-1 items-center hover:underline">{fetchingModels ? <Loader2 className="animate-spin" size={10} /> : <RefreshCw size={10} />} {t.refreshBtn}</button>
+						</div>
+					  </div>
                   </div>
                   {localModelsList.length > 0 ? (
                     <select className="w-full p-2 border rounded-xl" value={aiConfig.localModel} onChange={e => saveAiConfig({ ...aiConfig, localModel: e.target.value })} style={{ backgroundColor: currentTheme.glass, borderColor: currentTheme.line }}>{localModelsList.map(m => <option key={m.name} value={m.name}>{m.name}</option>)}</select>
