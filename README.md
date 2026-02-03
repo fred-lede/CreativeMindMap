@@ -2,6 +2,33 @@
 
 「Brainstorm AI」是一款強大的心智圖工具，深度整合了多種 AI 模型，包括 Google Gemini、OpenAI (ChatGPT) 和本地部署的 Ollama。它不僅提供直觀的心智圖介面，更透過 AI 輔助您的策略發想、知識探索和內容創作。
 
+<p align="center">
+  <b>CreativeMindMap UI Preview</b>
+</p>
+
+<table align="center">
+  <tr>
+    <td align="center">
+      <img src="CreativeMindMap-1.jpg" width="380"><br>
+      <sub>Main UI</sub>
+    </td>
+    <td align="center">
+      <img src="CreativeMindMap-2.jpg" width="380"><br>
+      <sub>Settings</sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <img src="CreativeMindMap-3.jpg" width="380"><br>
+      <sub>AI Deep Analysis & Path Summary</sub>
+    </td>
+    <td align="center">
+      <img src="CreativeMindMap-4.jpg" width="380"><br>
+      <sub>Connect</sub>
+    </td>
+  </tr>
+</table>
+
 這個版本是基於 Electron 框架構建的桌面應用程式，相較於 Tauri 版本，Electron 版本在本地 Ollama 連線部分，**已內建 Smart Proxy (智慧代理伺服器)**，這意味著：
 
 *   您 **無需手動設定 `OLLAMA_ORIGINS` 環境變數**。
