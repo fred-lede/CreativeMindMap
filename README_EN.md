@@ -1,6 +1,10 @@
-# 💡 Brainstorm AI (Electron Desktop Application)
+# 💡 Creative MindMap by Brainstorm AI (Electron 桌面應用程式)
 
-"Brainstorm AI" is a powerful mind mapping tool deeply integrated with various AI models, including Google Gemini, OpenAI (ChatGPT), and locally deployed Ollama. It not only provides an intuitive mind mapping interface but also assists your strategic brainstorming, knowledge exploration, and content creation with AI.
+[🇹🇼 繁體中文 (Traditional Chinese)](./README.md) | [🇺🇸 English (英文)](./README_EN.md)
+
+---
+
+"Creative MindMap" is a powerful mind mapping tool deeply integrated with various AI models, including Google Gemini, OpenAI (ChatGPT), and locally deployed Ollama. It not only provides an intuitive mind mapping interface but also assists your strategic brainstorming, knowledge exploration, and content creation with AI.
 
 <p align="center">
   <b>CreativeMindMap UI Preview</b>
