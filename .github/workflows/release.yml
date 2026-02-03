@@ -31,20 +31,30 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # 4️⃣ Build Electron app (只 build，不 publish)
+      # 4️⃣ Build Electron app
       - name: Build Electron app
         run: npm run electron:build
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # 5️⃣ Upload Release assets（只上傳「給使用者的檔案」）
-      - name: Upload Release Assets
+      # 5️⃣ ✅ 只在 Ubuntu 建立 Release
+      - name: Create GitHub Release
+        if: matrix.os == 'ubuntu-latest'
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ github.ref_name }}
+          draft: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # 6️⃣ 上傳 Release assets（三個 OS 都跑）
+      - name: Upload Release Assets
+        uses: softprops/action-gh-release@v1
+        with:
           files: |
             release/*.exe
             release/*.dmg
             release/*.AppImage
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          
