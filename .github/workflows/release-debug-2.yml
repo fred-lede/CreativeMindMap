@@ -1,0 +1,69 @@
+name: Build and Release
+
+on:
+  workflow_dispatch:  # 手動觸發，push tag 不會跑
+
+jobs:
+  release:
+    strategy:
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      VERSION: ${{ github.ref_name }}
+
+    steps:
+      # 1️⃣ Checkout repo
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 2️⃣ Setup Node.js
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # 3️⃣ Install dependencies
+      - name: Install dependencies
+        run: npm install
+
+      # 4️⃣ Build Electron App
+      - name: Build Electron App
+        run: npm run electron:build
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # 5️⃣ Debug: list release folder
+      - name: List release folder
+        run: ls -R release
+
+      # 6️⃣ Create GitHub Release
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.ref_name }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # 7️⃣ Upload Release Assets (可執行檔)
+      - name: Upload Executable Assets to Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            release/**/*.exe
+            release/**/*.dmg
+            release/**/*.app
+            release/**/*.AppImage
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # 8️⃣ Upload workflow artifacts (for debugging / internal download)
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-${{ matrix.os }}-${{ env.VERSION }}
+          path: |
+            release/**/*.exe
+            release/**/*.dmg
+            release/**/*.app
+            release/**/*.AppImage
