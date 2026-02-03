@@ -1165,18 +1165,7 @@ Please provide a comprehensive response based on these search results. Include c
         TASK: Update strategy (max 150 words). 
         LANGUAGE: "strategy" must be in ENGLISH.
         Return JSON: {"strategy":"..."}`, true);
-      let strat = "";
-      try {
-        const jsonMatch = res.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          const parsed = JSON.parse(jsonMatch[0]);
-          strat = parsed.strategy || "";
-        } else {
-          strat = JSON.parse(res.replace(/```json/g, '').replace(/```/g, '').trim()).strategy;
-        }
-      } catch (e) {
-        strat = res;
-      }
+      let strat = ""; try { strat = JSON.parse(res.replace(/```json/g, '').replace(/```/g, '').trim()).strategy; } catch (e) { strat = res; }
       setStrategyContext(strat); showToast(t.strategyUpdated, "success");
     } catch (e) { showToast(e.message, "error"); } finally { setIsRegeneratingStrategy(false); }
   };
@@ -1265,17 +1254,7 @@ Please provide a comprehensive response based on these search results. Include c
       `;
 
       const resultText = await callAiApi(promptText, true);
-      let parsed;
-      try {
-        const jsonMatch = resultText.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          parsed = JSON.parse(jsonMatch[0]);
-        } else {
-          parsed = JSON.parse(resultText.replace(/```json/g, '').replace(/```/g, '').trim());
-        }
-      } catch (e) {
-        throw new Error("Failed to parse AI response: " + resultText.substring(0, 100) + "...");
-      }
+      const parsed = JSON.parse(resultText.replace(/```json/g, '').replace(/```/g, '').trim());
 
       const updatedNodes = nodes.map(n => {
         if (n.id === sourceNode.id) {
@@ -1392,16 +1371,7 @@ Please provide a comprehensive response based on these search results. Include c
         ${timeStr}`, true);
 
       let parsed = { strategy: "", zh: initialText, en: initialText };
-      try {
-        const jsonMatch = res.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          parsed = JSON.parse(jsonMatch[0]);
-        } else {
-          parsed = JSON.parse(res.replace(/```json/g, '').replace(/```/g, '').trim());
-        }
-      } catch (e) {
-        console.warn("Initial setup JSON parse failed", e);
-      }
+      try { parsed = JSON.parse(res.replace(/```json/g, '').replace(/```/g, '').trim()); } catch (e) { }
 
       setStrategyContext(parsed.strategy);
 
@@ -1428,17 +1398,7 @@ Please provide a comprehensive response based on these search results. Include c
             - Return strictly valid JSON: {"zh": "...", "en": "..."}
           `, true);
 
-      let parsed;
-      try {
-        const jsonMatch = res.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          parsed = JSON.parse(jsonMatch[0]);
-        } else {
-          parsed = JSON.parse(res.replace(/```json/g, '').replace(/```/g, '').trim());
-        }
-      } catch (e) {
-        throw new Error("Translation parse error");
-      }
+      const parsed = JSON.parse(res.replace(/```json/g, '').replace(/```/g, '').trim());
 
       setNodes(prev => prev.map(n => {
         if (n.isRoot) {
@@ -1656,11 +1616,36 @@ Please provide a comprehensive response based on these search results. Include c
 
           if (node.isRoot) {
             // [Root Node 智慧切換邏輯]
-            // 直接採用與分支節點一致的邏輯，確保語言切換正常
-            mainText = isZh ? (node.zh || node.text) : (node.en || node.text);
-            subText = isZh ? (node.en || node.text) : (node.zh || node.text);
+            
+            // 1. 先取得標準的語言對應 (依據介面設定)
+            // 介面中文 -> 主:ZH, 副:EN
+            // 介面英文 -> 主:EN, 副:ZH
+            let candidateMain = isZh ? (node.zh || node.text) : (node.en || node.text);
+            let candidateSub  = isZh ? (node.en || node.text) : (node.zh || node.text);
 
-            // 防呆：如果主副標題一樣 (例如 AI 還沒翻譯回來)，副標題留空
+            // 2. 注入「使用者原始輸入 (Loyalty)」判斷
+            // 目標：如果使用者的輸入 (node.text) 屬於當前介面的語言，就優先顯示原始輸入
+            
+            if (isZh) {
+              // [中文介面模式]
+              // 如果 原始輸入(text) 不等於 英文翻譯(en)，代表輸入很可能是中文
+              // 這時我們強制主標題使用原始輸入，避免 AI 改寫過頭
+              if (node.text && node.text !== node.en) {
+                candidateMain = node.text;
+              }
+            } else {
+              // [英文介面模式]
+              // 如果 原始輸入(text) 不等於 中文翻譯(zh)，代表輸入很可能是英文
+              // 這時我們強制主標題使用原始輸入
+              if (node.text && node.text !== node.zh) {
+                candidateMain = node.text;
+              }
+            }
+
+            mainText = candidateMain;
+            subText = candidateSub;
+
+            // 3. 防呆：如果主副標題一樣 (例如 AI 還沒翻譯回來)，副標題留空
             if (subText === mainText) subText = "";
 
           } else {
