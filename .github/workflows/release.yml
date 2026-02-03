@@ -3,69 +3,48 @@ name: Build and Release
 on:
   push:
     tags:
-      - 'v*'  # push v1.0.0 這種 tag 觸發
+      - "v*"
 
 jobs:
   release:
+    name: Build on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+
     strategy:
+      fail-fast: false
       matrix:
         os: [windows-latest, macos-latest, ubuntu-latest]
-    runs-on: ${{ matrix.os }}
-    env:
-      VERSION: ${{ github.ref_name }}
 
     steps:
-      # 1️⃣ Checkout repo
+      # 1️⃣ Checkout
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2️⃣ Setup Node.js
+      # 2️⃣ Node.js
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: npm
 
       # 3️⃣ Install dependencies
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
-      # 4️⃣ Build Electron App
-      - name: Build Electron App
+      # 4️⃣ Build Electron app (只 build，不 publish)
+      - name: Build Electron app
         run: npm run electron:build
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # 5️⃣ Debug: list release folder
-      - name: List release folder
-        run: ls -R release
-
-      # 6️⃣ Create GitHub Release
-      - name: Create GitHub Release
+      # 5️⃣ Upload Release assets（只上傳「給使用者的檔案」）
+      - name: Upload Release Assets
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ github.ref_name }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      # 7️⃣ Upload Release Assets (可執行檔)
-      - name: Upload Executable Assets to Release
-        uses: softprops/action-gh-release@v1
-        with:
           files: |
-            release/**/*.exe
-            release/**/*.dmg
-            release/**/*.app
-            release/**/*.AppImage
+            release/*.exe
+            release/*.dmg
+            release/*.AppImage
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      # 8️⃣ Upload workflow artifacts (for debugging / internal download)
-      - name: Upload workflow artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-${{ matrix.os }}-${{ env.VERSION }}
-          path: |
-            release/**/*.exe
-            release/**/*.dmg
-            release/**/*.app
-            release/**/*.AppImage
