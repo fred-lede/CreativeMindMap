@@ -37,11 +37,13 @@ jobs:
       - name: List release folder
         run: ls -R release
 
-      # 6️⃣ Create GitHub Release
+       # 6️⃣ ✅ 建立 GitHub Release（只跑一次）
       - name: Create GitHub Release
+        if: matrix.os == 'ubuntu-latest'
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ github.ref_name }}
+          draft: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
