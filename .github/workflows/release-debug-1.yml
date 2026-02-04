@@ -1,68 +1,71 @@
-name: Build and Release Debug
+name: Build and Release
 
 on:
-  workflow_dispatch:  # 手動觸發，push tag 不會跑
+  push:
+    tags:
+      - 'v*'
 
 jobs:
-  release-debug:
-    name: Build Debug on ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
-
+  build:
+    name: Build on ${{ matrix.os }}
     strategy:
-      fail-fast: false
       matrix:
         os: [windows-latest, macos-latest, ubuntu-latest]
 
-    env:
-      VERSION: ${{ github.ref_name }}
+    runs-on: ${{ matrix.os }}
 
     steps:
-      # 1️⃣ Checkout repo
+      # 1️⃣ Checkout
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2️⃣ Setup Node.js
+      # 2️⃣ Node.js
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
 
-      # 3️⃣ Install dependencies
+      # 3️⃣ Install deps
       - name: Install dependencies
-        run: npm ci
+        run: npm install
 
-      # 4️⃣ Build Electron app
+      # 4️⃣ Build Electron (electron-builder)
       - name: Build Electron App
         run: npm run electron:build
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # 5️⃣ Debug: list release folder
+      # 5️⃣ Debug：確認輸出
       - name: List release folder
         run: ls -R release
 
-      # 6️⃣ Create GitHub Release
+      # 6️⃣ ✅ 建立 GitHub Release（只跑一次）
       - name: Create GitHub Release
+        if: matrix.os == 'ubuntu-latest'
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ github.ref_name }}
+          draft: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # 7️⃣ Upload all Release Assets (包含 elevate.exe / blockmap)
-      - name: Upload all Assets to Release
+      # 7️⃣ 上傳 Release Assets（三個 OS 都跑）
+      - name: Upload Release Assets
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            release/**/*
+            release/**/*.exe
+            release/**/*.dmg
+            release/**/*.AppImage
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # 8️⃣ Upload workflow artifacts (debug / internal download)
-      - name: Upload workflow artifact
+      # 8️⃣（可選）Workflow artifacts，方便內部下載 / Debug
+      - name: Upload workflow artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: debug-build-${{ matrix.os }}-${{ env.VERSION }}
+          name: build-${{ matrix.os }}-${{ github.ref_name }}
           path: |
-            release/**/*
+            release/**/*.exe
+            release/**/*.dmg
+            release/**/*.AppImage
